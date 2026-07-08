@@ -43,17 +43,40 @@ with c2:
 
 st.markdown('<div class="section-label">Recent Experiments</div>', unsafe_allow_html=True)
 
-recent = st.session_state.get("experiments_history", [])
-if not recent:
-    st.info("No experiments logged yet. Start your first one above!")
+if USE_MOCK_DATA:
+    recent = st.session_state.get("experiments_history", [])
+    if not recent:
+        st.info("No experiments logged yet. Start your first one above!")
+    else:
+        for exp in recent[-5:][::-1]:
+            with st.container(border=True):
+                cols = st.columns([3, 1])
+                cols[0].markdown(f"**{exp['product_name']}**")
+                pct = exp.get("would_use_pct", 0)
+                tier_color = "score-high" if pct >= 60 else "score-mid" if pct >= 40 else "score-low"
+                cols[1].markdown(
+                    f'<span class="score-badge {tier_color}">{pct}% WOULD USE</span>',
+                    unsafe_allow_html=True,
+                )
 else:
-    for exp in recent[-5:][::-1]:
-        with st.container(border=True):
-            cols = st.columns([3, 1])
-            cols[0].markdown(f"**{exp['product_name']}**")
-            pct = exp.get("would_use_pct", 0)
-            tier_color = "score-high" if pct >= 60 else "score-mid" if pct >= 40 else "score-low"
-            cols[1].markdown(
-                f'<span class="score-badge {tier_color}">{pct}% WOULD USE</span>',
-                unsafe_allow_html=True,
-            )
+    # Real backend is connected — pull actual persisted history from its
+    # database instead of in-memory session state, which resets every visit.
+    from services.api_client import list_experiments, get_experiment_personas
+
+    past_experiments = list_experiments()
+    if not past_experiments:
+        st.info("No experiments logged yet. Start your first one above!")
+    else:
+        for exp in past_experiments[:5]:
+            with st.container(border=True):
+                cols = st.columns([3, 1, 1])
+                cols[0].markdown(f"**{exp['product_name']}**")
+                cols[0].caption(exp.get("description", "")[:100])
+                cols[1].markdown(
+                    f'<span class="tag-pill">{exp.get("status", "draft").upper()}</span>',
+                    unsafe_allow_html=True,
+                )
+                if cols[2].button("Load", key=f"load_{exp['id']}", use_container_width=True):
+                    st.session_state.experiment = exp
+                    st.session_state.personas = get_experiment_personas(exp["id"])
+                    st.switch_page("pages/2_Persona_Gallery.py")

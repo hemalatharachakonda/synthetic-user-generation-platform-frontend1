@@ -121,6 +121,32 @@ def create_experiment(product_name, description, target_audience, objectives, pe
     }
 
 
+def list_experiments() -> list[dict]:
+    """GET /experiments — real, persisted history from the backend's database.
+    Session state resets on every fresh visit, but this doesn't."""
+    if USE_MOCK_DATA:
+        return []
+    result = _get("/experiments")
+    items = result.get("items", []) if result else []
+    return [{
+        "id": item.get("id", ""),
+        "product_name": item.get("title", ""),
+        "description": item.get("product_description", ""),
+        "target_audience": item.get("target_audience", ""),
+        "objectives": item.get("research_objectives", ""),
+        "status": item.get("status", "draft"),
+        "created_at": item.get("created_at", ""),
+    } for item in items]
+
+
+def get_experiment_personas(experiment_id: str) -> list[dict]:
+    if USE_MOCK_DATA:
+        return []
+    result = _get(f"/experiments/{experiment_id}/personas")
+    items = result.get("items", []) if result else []
+    return [_normalize_persona(p) for p in items]
+
+
 # ── Personas ──────────────────────────────────────────────────────────────────
 
 def generate_personas(product_name, description, target_audience, objectives, count) -> list[dict]:

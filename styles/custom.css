@@ -185,6 +185,20 @@ div[data-testid="stDataFrame"] {
     box-shadow: var(--shadow-card);
 }
 
+/* ── Chat input box (separate component from stTextInput/stTextArea) ───── */
+div[data-testid="stChatInput"] textarea {
+    color: var(--ink) !important;
+    background-color: var(--surface) !important;
+}
+div[data-testid="stChatInput"] textarea::placeholder {
+    color: var(--ink-soft) !important;
+    opacity: 1 !important;
+}
+div[data-testid="stChatInput"] {
+    background-color: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+
 /* ── Chat ────────────────────────────────────────────────────── */
 .stChatMessage {
     border-radius: 14px;
