@@ -79,9 +79,17 @@ else:
                     unsafe_allow_html=True,
                 )
                 if cols[2].button("Load", key=f"load_{exp['id']}", use_container_width=True):
-                    st.session_state.experiment = exp
-                    st.session_state.personas = get_experiment_personas(exp["id"])
-                    st.switch_page("pages/2_Persona_Gallery.py")
+                    fetched_personas = get_experiment_personas(exp["id"])
+                    if not fetched_personas:
+                        st.warning(
+                            f"Couldn't load personas for \"{exp['product_name']}\" — the "
+                            "backend returned no personas for this experiment. It may not "
+                            "have generated any yet, or the endpoint may have changed."
+                        )
+                    else:
+                        st.session_state.experiment = exp
+                        st.session_state.personas = fetched_personas
+                        st.switch_page("pages/2_Persona_Gallery.py")
                 if cols[3].button("Delete", key=f"delete_{exp['id']}", use_container_width=True):
                     st.session_state.dismissed_experiment_ids.add(exp["id"])
                     st.rerun()
