@@ -21,15 +21,35 @@ if not has_personas():
         st.switch_page("pages/1_Experiment_Workspace.py")
     st.stop()
 
-st.caption(f"Experiment: **{st.session_state.experiment['product_name']}**")
+st.markdown(
+    f'<h3 style="margin-top:-0.4rem; color: var(--accent);">{st.session_state.experiment["product_name"]}</h3>',
+    unsafe_allow_html=True,
+)
 
-if st.button("Recalculate Insights") or st.session_state.insights is None:
+def _current_data_fingerprint() -> tuple:
+    """A cheap signature of the data insights would be based on. If this
+    changes (new interview turns, new survey answers, different personas),
+    the cached insights are stale and should be recalculated automatically."""
+    persona_ids = tuple(sorted(p["id"] for p in st.session_state.personas))
+    chat_turns = sum(len(turns) for turns in st.session_state.chat_history.values())
+    survey_answers = sum(len(r) for r in st.session_state.survey_responses.values())
+    return (persona_ids, chat_turns, survey_answers)
+
+
+current_fingerprint = _current_data_fingerprint()
+needs_recalc = (
+    st.session_state.insights is None
+    or st.session_state.insights_fingerprint != current_fingerprint
+)
+
+if st.button("Recalculate Insights") or needs_recalc:
     with st.spinner("Extracting insights..."):
         st.session_state.insights = extract_insights(
             st.session_state.personas,
             st.session_state.survey_responses,
             st.session_state.chat_history,
         )
+        st.session_state.insights_fingerprint = current_fingerprint
 
 insights = st.session_state.insights
 

@@ -27,6 +27,7 @@ def init_session_state():
         "expanded_sections": [],
 
         "insights": None,
+        "insights_fingerprint": None,  # tracks what data insights were computed from, to auto-refresh when it changes
         "report_generated": False,
         "report_data": None,
 
