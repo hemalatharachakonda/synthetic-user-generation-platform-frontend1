@@ -142,7 +142,7 @@ def list_experiments() -> list[dict]:
 def get_experiment_personas(experiment_id: str) -> list[dict]:
     if USE_MOCK_DATA:
         return []
-    result = _get(f"/experiments/{experiment_id}/personas")
+    result = _get(f"/personas/experiment/{experiment_id}")
     items = result.get("items", []) if result else []
     return [_normalize_persona(p) for p in items]
 
