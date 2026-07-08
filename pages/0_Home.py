@@ -63,13 +63,15 @@ else:
     # database instead of in-memory session state, which resets every visit.
     from services.api_client import list_experiments, get_experiment_personas
 
-    past_experiments = list_experiments()
+    dismissed = st.session_state.get("dismissed_experiment_ids", set())
+    past_experiments = [e for e in list_experiments() if e["id"] not in dismissed]
+
     if not past_experiments:
         st.info("No experiments logged yet. Start your first one above!")
     else:
         for exp in past_experiments[:5]:
             with st.container(border=True):
-                cols = st.columns([3, 1, 1])
+                cols = st.columns([3, 1, 1, 1])
                 cols[0].markdown(f"**{exp['product_name']}**")
                 cols[0].caption(exp.get("description", "")[:100])
                 cols[1].markdown(
@@ -80,3 +82,7 @@ else:
                     st.session_state.experiment = exp
                     st.session_state.personas = get_experiment_personas(exp["id"])
                     st.switch_page("pages/2_Persona_Gallery.py")
+                if cols[3].button("Delete", key=f"delete_{exp['id']}", use_container_width=True,
+                                  help="Hides this from your view only — the data stays in the database."):
+                    st.session_state.dismissed_experiment_ids.add(exp["id"])
+                    st.rerun()

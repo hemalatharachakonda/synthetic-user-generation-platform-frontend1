@@ -29,6 +29,8 @@ def init_session_state():
         "insights": None,
         "report_generated": False,
         "report_data": None,
+
+        "dismissed_experiment_ids": set(),  # frontend-only "delete" — hides from Recent Experiments, never touches the backend DB
     }
     for key, value in defaults.items():
         if key not in st.session_state:
