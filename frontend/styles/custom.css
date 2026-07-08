@@ -1,0 +1,597 @@
+/* ============================================================
+   Synthetic User Generation Platform — "Dianne" theme
+   One background color (Blue Dianne), one accent color (gold).
+   No competing hues — every interactive/highlight element shares
+   the single accent, differentiated only by tint/shade/opacity.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+    /* Background — Blue Dianne, solid, used everywhere as the page color */
+    --bg: #204852;
+    --bg-deep: #152F35;      /* shade of the same color, for sidebar/recessed areas */
+    --bg-soft: #2A5762;      /* tint of the same color, for subtle borders on dark */
+
+    /* Card surface — neutral, not a design color, just a readable paper for content */
+    --surface: #F4F7F7;
+    --surface-alt: #E9EFEF;
+
+    /* Text — chosen per surface for contrast, not a palette choice */
+    --ink: #14282C;          /* on light surfaces */
+    --ink-soft: #55696D;
+    --ink-on-dark: #F4F7F7;  /* on the dark background */
+    --ink-on-dark-soft: #B9CBCE;
+
+    /* The one accent color — bright aqua. Every highlight, button, badge uses this. */
+    --accent: #4FD1C5;
+    --accent-dark: #2BA79B;
+    --accent-tint: #DEF7F4;
+    --accent-tint-strong: #A9EDE3;
+
+    --border: #D7E3E3;
+    --border-on-dark: rgba(244,247,247,0.14);
+
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.10);
+    --shadow-card-hover: 0 4px 10px rgba(0,0,0,0.10), 0 16px 36px rgba(0,0,0,0.16);
+
+    --font-display: 'Sora', -apple-system, sans-serif;
+    --font-body: 'Inter', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SFMono-Regular', monospace;
+}
+
+/* ── Base canvas ─────────────────────────────────────────────── */
+.stApp {
+    background-color: var(--bg);
+    font-family: var(--font-body);
+    color: var(--ink-on-dark);
+}
+
+section[data-testid="stSidebar"] {
+    background-color: var(--bg-deep);
+    border-right: 1px solid var(--border-on-dark);
+}
+section[data-testid="stSidebar"] * {
+    color: var(--ink-on-dark) !important;
+}
+section[data-testid="stSidebar"] .stCaption, section[data-testid="stSidebar"] small {
+    color: var(--ink-on-dark-soft) !important;
+}
+/* Active nav item gets the one accent color, nothing else does in the sidebar */
+section[data-testid="stSidebar"] [aria-selected="true"] {
+    background-color: var(--accent) !important;
+}
+section[data-testid="stSidebar"] [aria-selected="true"] * {
+    color: var(--ink) !important;
+}
+
+/* ── Typography ──────────────────────────────────────────────── */
+h1, h2, h3 {
+    font-family: var(--font-display);
+    color: var(--ink-on-dark);
+    letter-spacing: -0.02em;
+}
+h1 { font-weight: 700; }
+h2, h3 { font-weight: 600; }
+
+/* Headings that appear inside a light card surface need dark ink instead */
+div[data-testid="stVerticalBlockBorderWrapper"] h1,
+div[data-testid="stVerticalBlockBorderWrapper"] h2,
+div[data-testid="stVerticalBlockBorderWrapper"] h3,
+.specimen-card h1, .specimen-card h2, .specimen-card h3 {
+    color: var(--ink);
+}
+
+.eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* Body text on the dark page background */
+.stApp p, .stMarkdown, .stCaption, label {
+    color: var(--ink-on-dark);
+}
+
+/* ── Buttons — the one accent color, always ─────────────────── */
+.stButton > button {
+    border-radius: 10px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    border: 1.5px solid var(--accent);
+    background-color: transparent;
+    color: var(--accent);
+    transition: all 0.18s ease;
+}
+.stButton > button:hover {
+    background-color: var(--accent);
+    color: var(--ink);
+}
+.stButton > button[kind="primary"] {
+    background-color: var(--accent);
+    border: none;
+    color: var(--ink);
+    font-weight: 700;
+}
+.stButton > button[kind="primary"]:hover {
+    background-color: var(--accent-dark);
+    color: var(--ink);
+}
+
+/* ── Containers / cards ──────────────────────────────────────── */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 16px !important;
+    border: 1px solid var(--border) !important;
+    background-color: var(--surface);
+    box-shadow: var(--shadow-card);
+}
+div[data-testid="stVerticalBlockBorderWrapper"] p,
+div[data-testid="stVerticalBlockBorderWrapper"] span,
+div[data-testid="stVerticalBlockBorderWrapper"] div,
+div[data-testid="stVerticalBlockBorderWrapper"] label,
+div[data-testid="stVerticalBlockBorderWrapper"] .stMarkdown,
+div[data-testid="stVerticalBlockBorderWrapper"] .stCaption {
+    color: var(--ink) !important;
+}
+
+/* ── Metrics ─────────────────────────────────────────────────── */
+div[data-testid="stMetric"] {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 0.9rem 1rem;
+    box-shadow: var(--shadow-card);
+}
+div[data-testid="stMetricValue"] {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.9rem;
+    color: var(--accent-dark);
+}
+div[data-testid="stMetricLabel"] {
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+}
+
+/* ── Inputs ──────────────────────────────────────────────────── */
+.stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
+    border-radius: 10px !important;
+    border-color: var(--border) !important;
+    font-family: var(--font-body);
+    background-color: var(--surface) !important;
+    color: var(--ink) !important;
+}
+.stTextInput input:focus, .stTextArea textarea:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--accent-tint) !important;
+}
+
+/* ── Progress bar ────────────────────────────────────────────── */
+div[data-testid="stProgress"] div[role="progressbar"] > div {
+    background-color: var(--accent) !important;
+}
+
+/* ── Dataframe ───────────────────────────────────────────────── */
+div[data-testid="stDataFrame"] {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+}
+
+/* ── Chat ────────────────────────────────────────────────────── */
+.stChatMessage {
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background-color: var(--surface);
+    box-shadow: var(--shadow-card);
+}
+.stChatMessage p,
+.stChatMessage span,
+.stChatMessage div,
+.stChatMessage .stMarkdown {
+    color: var(--ink) !important;
+}
+
+/* ── Hero banner (Home page) ────────────────────────────────── */
+.lab-hero {
+    background-color: var(--bg-deep);
+    border: 1px solid var(--border-on-dark);
+    border-radius: 20px;
+    padding: 2.8rem 2.6rem;
+    margin-bottom: 1.4rem;
+}
+.lab-hero .eyebrow { color: var(--accent); }
+.lab-hero h1 {
+    color: var(--ink-on-dark);
+    font-size: 2.7rem;
+    margin: 0.3rem 0 0.6rem 0;
+}
+.lab-hero p.tagline {
+    color: var(--ink-on-dark-soft);
+    font-family: var(--font-body);
+    font-size: 1.05rem;
+    max-width: 42ch;
+    margin-bottom: 0;
+}
+.lab-hero .readout-row {
+    display: flex;
+    gap: 1.8rem;
+    margin-top: 1.6rem;
+    flex-wrap: wrap;
+}
+.lab-hero .readout {
+    font-family: var(--font-mono);
+    color: var(--ink-on-dark);
+    border-left: 2px solid var(--accent);
+    padding-left: 0.7rem;
+}
+.lab-hero .readout .val {
+    font-size: 1.5rem;
+    font-weight: 700;
+    display: block;
+    color: var(--accent);
+}
+.lab-hero .readout .lbl {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-on-dark-soft);
+}
+
+/* ── Specimen card (Persona) ────────────────────────────────── */
+.specimen-card {
+    position: relative;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.1rem 1.2rem 1rem 1.2rem;
+    margin-bottom: 0.6rem;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.specimen-card:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
+}
+.specimen-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    border-radius: 16px 16px 0 0;
+    background-color: var(--accent);
+}
+.specimen-id {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    margin-top: 6px;
+}
+.specimen-name {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 0.15rem 0 0 0;
+}
+.specimen-meta {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+/* Score badges — one accent hue at different weights, not three colors */
+.score-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.78rem;
+    border-radius: 999px;
+    padding: 0.15rem 0.7rem;
+    border: 1.5px solid var(--accent);
+}
+.score-high { background-color: var(--accent); color: var(--ink); border-color: var(--accent); }
+.score-mid  { background-color: var(--accent-tint-strong); color: var(--accent-dark); border-color: var(--accent); }
+.score-low  { background-color: transparent; color: var(--accent-dark); border-color: var(--accent); }
+
+.tag-pill {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background-color: var(--surface-alt);
+    color: var(--ink-soft);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.1rem 0.55rem;
+    margin: 0.15rem 0.25rem 0 0;
+}
+
+/* ── Section eyebrow divider ─────────────────────────────────── */
+.section-label {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent-dark);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.4rem;
+    margin: 1.2rem 0 0.8rem 0;
+    font-weight: 600;
+}
+
+/* ── Step markers (Experiment Workspace) ────────────────────── */
+.step-marker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+}
+.step-marker .num {
+    background-color: var(--accent);
+    color: var(--ink);
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+}
+
+/* ============================================================
+   Insights Dashboard + Suggestions — visual clarity pass.
+   Scoped classes below are only used on the Insights Dashboard
+   and Report pages; nothing above this line is touched, and no
+   markup/component logic changed — CSS only.
+   ============================================================ */
+
+/* Metric readout row — clearer than raw st.metric, same design language */
+.insight-metric-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.2rem;
+}
+.insight-metric-card {
+    flex: 1;
+    min-width: 170px;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 14px;
+    padding: 1rem 1.15rem;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.insight-metric-card:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
+}
+.insight-metric-card .im-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    font-weight: 600;
+}
+.insight-metric-card .im-value {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 2.3rem;
+    color: var(--accent-dark);
+    line-height: 1.2;
+    margin-top: 0.2rem;
+}
+.insight-metric-card .im-sub {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    margin-top: 0.15rem;
+}
+
+/* "What users want" summary band — plain-English takeaway up top */
+.insight-summary-band {
+    background-color: var(--bg-deep);
+    border: 1px solid var(--border-on-dark);
+    border-left: 4px solid var(--accent);
+    border-radius: 14px;
+    padding: 1.1rem 1.3rem;
+    margin: 0.5rem 0 1.3rem 0;
+    box-shadow: var(--shadow-card);
+}
+.insight-summary-band .im-summary-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 0.45rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.insight-summary-band .im-summary-label::before {
+    content: "✺";
+    font-size: 0.85rem;
+}
+.insight-summary-band p {
+    color: var(--ink-on-dark) !important;
+    margin: 0;
+    font-size: 1.02rem;
+    line-height: 1.6;
+}
+
+/* Suggestions list — ranked, scannable cards, priority readable at a glance */
+.suggestion-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+.suggestion-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.9rem;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 5px solid var(--border);
+    border-radius: 14px;
+    padding: 0.9rem 1.1rem;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow 0.15s ease, transform 0.15s ease, border-left-color 0.15s ease;
+}
+.suggestion-card:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
+}
+/* Left edge color-codes urgency so the list scans top-to-bottom at a glance,
+   without introducing a new hue — same accent, different strength. */
+.suggestion-card:has(.priority-high)   { border-left-color: var(--accent-dark); }
+.suggestion-card:has(.priority-medium) { border-left-color: var(--accent); }
+.suggestion-card:has(.priority-low)    { border-left-color: var(--border); }
+
+.suggestion-rank {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 0.8rem;
+    color: var(--surface);
+    background-color: var(--ink-soft);
+    min-width: 1.9rem;
+    height: 1.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.suggestion-body { flex: 1; min-width: 0; }
+.suggestion-title {
+    font-family: var(--font-body);
+    font-weight: 600;
+    color: var(--ink);
+    font-size: 0.98rem;
+    line-height: 1.45;
+}
+.suggestion-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    align-items: center;
+    margin-top: 0.55rem;
+}
+.priority-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 0.2rem 0.65rem 0.2rem 0.55rem;
+}
+/* Distinct glyph + weight per level, on top of the tint difference,
+   so priority reads correctly even at a glance or in grayscale. */
+.priority-badge::before { font-size: 0.7rem; line-height: 1; }
+.priority-high {
+    background-color: var(--accent-dark);
+    color: var(--surface);
+    border: 1.5px solid var(--accent-dark);
+}
+.priority-high::before { content: "▲"; }
+.priority-medium {
+    background-color: var(--accent-tint-strong);
+    color: var(--accent-dark);
+    border: 1.5px solid var(--accent);
+}
+.priority-medium::before { content: "●"; }
+.priority-low {
+    background-color: transparent;
+    color: var(--ink-soft);
+    border: 1.5px dashed var(--border);
+}
+.priority-low::before { content: "▽"; }
+
+.category-pill {
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background-color: var(--surface-alt);
+    color: var(--ink-soft);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.16rem 0.55rem;
+    font-weight: 600;
+}
+.mentioned-by {
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    font-style: italic;
+}
+.mentioned-by::before {
+    content: "— ";
+}
+
+/* Key quotes — clean grid instead of stacked, so it reads at a glance */
+.quote-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 0.75rem;
+}
+.quote-card-clean {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1rem 1.1rem;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.quote-card-clean:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
+}
+.quote-card-clean .qmark {
+    font-family: var(--font-display);
+    font-size: 1.9rem;
+    color: var(--accent);
+    line-height: 1;
+    display: block;
+    margin-bottom: 0.2rem;
+}
+.quote-card-clean .qtext {
+    font-family: var(--font-display);
+    font-style: italic;
+    color: var(--ink);
+    font-size: 1.02rem;
+    line-height: 1.45;
+}
+.quote-card-clean .qmeta {
+    margin-top: 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent-dark);
+    font-weight: 600;
+}

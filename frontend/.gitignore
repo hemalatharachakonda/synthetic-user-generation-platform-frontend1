@@ -1,0 +1,16 @@
+# Secrets — never commit these
+.env
+.env.local
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# OS/editor junk
+.DS_Store
+.vscode/
+.idea/
