@@ -56,51 +56,27 @@ def _get(path: str) -> dict:
         return {}
 
 
-def _dig(d: dict, *paths, default=None):
-    """Tries several dotted key-paths against a dict (handles backends that
-    nest fields under demographic/behavioral/psychological sub-objects, or
-    that use different naming than our mock data)."""
-    for path in paths:
-        cur = d
-        ok = True
-        for key in path.split("."):
-            if isinstance(cur, dict) and key in cur:
-                cur = cur[key]
-            else:
-                ok = False
-                break
-        if ok and cur not in (None, ""):
-            return cur
-    return default
-
-
 def _normalize_persona(raw: dict) -> dict:
-    """Maps a real-backend persona object (whatever shape it comes in) into
-    the flat shape every page/component in this app expects. Missing fields
-    degrade gracefully instead of raising, so one field mismatch doesn't take
-    down the whole gallery."""
-    tags = _dig(raw, "tags", "behavioral.personality_traits", "personality_traits", default=[])
-    if isinstance(tags, str):
-        tags = [t.strip() for t in tags.split(",") if t.strip()]
-
+    """Maps the real backend's PersonaResponse (confirmed schema) into the
+    flat shape every page/component in this app expects. The backend already
+    returns computed 'tags' (first 4 personality_traits) and 'adoption_score'
+    fields directly, so this is mostly a pass-through with safe defaults."""
     return {
-        "id": _dig(raw, "id", "_id", "persona_id", "persona_hash", default=""),
-        "name": _dig(raw, "name", "demographic.name", default="Unnamed Persona"),
-        "age": _dig(raw, "age", "demographic.age", default=None),
-        "occupation": _dig(raw, "occupation", "demographic.occupation", default=""),
-        "tags": tags or [],
-        "adoption_score": _dig(
-            raw, "adoption_score", "product_fit_score", "fit_score", default=5.0
-        ),
-        "avatar_seed": _dig(raw, "avatar_seed", "id", "_id", default="persona"),
-        "bio": _dig(raw, "bio", "narrative.bio", default=""),
-        "quote": _dig(raw, "quote", "narrative.quote", default=""),
+        "id": raw.get("id", ""),
+        "name": raw.get("name", "Unnamed Persona"),
+        "age": raw.get("age"),
+        "occupation": raw.get("occupation", ""),
+        "tags": raw.get("tags") or raw.get("personality_traits", [])[:4],
+        "adoption_score": raw.get("adoption_score", 5.0),
+        "avatar_seed": raw.get("avatar_seed") or raw.get("id", "persona"),
+        "bio": raw.get("bio", ""),
+        "quote": raw.get("quote") or "",
     }
 
 
 # ── Experiments ───────────────────────────────────────────────────────────────
 
-def create_experiment(product_name, description, target_audience, objectives) -> dict:
+def create_experiment(product_name, description, target_audience, objectives, persona_count=6) -> dict:
     if USE_MOCK_DATA:
         return {
             "id": f"exp_{abs(hash(product_name)) % 100000}",
@@ -110,21 +86,23 @@ def create_experiment(product_name, description, target_audience, objectives) ->
             "objectives": objectives,
             "status": "draft",
         }
+    # Confirmed real request schema (ExperimentCreateRequest): title,
+    # product_description, target_audience, research_objectives, persona_count.
     result = _post("/experiments", {
-        "product_name": product_name,
-        "description": description,
+        "title": product_name,
+        "product_description": description,
         "target_audience": target_audience,
-        "objectives": objectives,
+        "research_objectives": objectives,
+        "persona_count": persona_count,
     })
     if not result:
         return {}
-    exp_id = _dig(result, "id", "_id", "experiment_id", default="")
     return {
-        "id": exp_id,
-        "product_name": product_name,
-        "description": description,
-        "target_audience": target_audience,
-        "objectives": objectives,
+        "id": result.get("id", ""),
+        "product_name": result.get("title", product_name),
+        "description": result.get("product_description", description),
+        "target_audience": result.get("target_audience", target_audience),
+        "objectives": result.get("research_objectives", objectives),
         "status": result.get("status", "draft"),
     }
 
@@ -138,9 +116,7 @@ def generate_personas(product_name, description, target_audience, objectives, co
     experiment = st.session_state.get("experiment") or {}
     exp_id = experiment.get("id")
     if not exp_id:
-        # Personas are nested under an experiment on the real backend — create
-        # one first if the workspace hasn't already stored an id from create_experiment().
-        created = create_experiment(product_name, description, target_audience, objectives)
+        created = create_experiment(product_name, description, target_audience, objectives, count)
         exp_id = created.get("id")
         if created:
             st.session_state.experiment = created
@@ -148,18 +124,18 @@ def generate_personas(product_name, description, target_audience, objectives, co
         st.error("Could not create an experiment on the backend — check the error above.")
         return []
 
-    gen_result = _post(f"/experiments/{exp_id}/personas/generate", {"persona_count": count})
-    if gen_result is None:
+    # Confirmed real request schema (PersonaGenerateRequest): experiment_id
+    # lives in the body, endpoint is flat POST /personas/generate (not nested).
+    gen_result = _post("/personas/generate", {
+        "experiment_id": exp_id,
+        "persona_count": count,
+        "regenerate": False,
+    })
+    if not gen_result:
         return []
 
-    # Some backends return the personas directly from the generate call;
-    # others expect a follow-up GET. Try both.
-    raw_list = gen_result.get("personas") if isinstance(gen_result, dict) else None
-    if not raw_list:
-        fetched = _get(f"/experiments/{exp_id}/personas")
-        raw_list = fetched.get("personas", fetched if isinstance(fetched, list) else [])
-
-    return [_normalize_persona(p) for p in (raw_list or [])]
+    raw_list = gen_result.get("items", [])
+    return [_normalize_persona(p) for p in raw_list]
 
 
 # ── Survey ────────────────────────────────────────────────────────────────────

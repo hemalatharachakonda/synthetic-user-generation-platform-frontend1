@@ -7,8 +7,8 @@ def validate_experiment_form(product_name: str, description: str,
     errors = []
     if not product_name or not product_name.strip():
         errors.append("Product name is required.")
-    elif len(product_name.strip()) < 2:
-        errors.append("Product name is too short.")
+    elif len(product_name.strip()) < 3:
+        errors.append("Product name is too short (3+ characters).")
 
     if not description or len(description.strip()) < 10:
         errors.append("Please provide a product description (10+ characters).")

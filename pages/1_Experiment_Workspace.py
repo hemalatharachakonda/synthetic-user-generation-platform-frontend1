@@ -53,7 +53,7 @@ if submitted:
     else:
         reset_experiment_state()
         with st.spinner("Creating experiment..."):
-            experiment = create_experiment(product_name, description, target_audience, objectives)
+            experiment = create_experiment(product_name, description, target_audience, objectives, persona_count)
             st.session_state.experiment = experiment
 
         with st.spinner(f"Generating {persona_count} personas..."):
