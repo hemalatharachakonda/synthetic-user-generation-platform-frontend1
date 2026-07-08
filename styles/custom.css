@@ -110,6 +110,13 @@ div[data-testid="stVerticalBlockBorderWrapper"] h3,
     background-color: var(--accent);
     color: var(--ink);
 }
+.stButton > button:focus,
+.stButton > button:focus:not(:active) {
+    background-color: var(--accent) !important;
+    color: var(--ink) !important;
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 2px var(--accent-tint) !important;
+}
 .stButton > button[kind="primary"] {
     background-color: var(--accent);
     border: none;
@@ -119,6 +126,12 @@ div[data-testid="stVerticalBlockBorderWrapper"] h3,
 .stButton > button[kind="primary"]:hover {
     background-color: var(--accent-dark);
     color: var(--ink);
+}
+.stButton > button[kind="primary"]:focus,
+.stButton > button[kind="primary"]:focus:not(:active) {
+    background-color: var(--accent-dark) !important;
+    color: var(--ink) !important;
+    box-shadow: 0 0 0 2px var(--accent-tint) !important;
 }
 
 /* ── Containers / cards ──────────────────────────────────────── */

@@ -82,7 +82,6 @@ else:
                     st.session_state.experiment = exp
                     st.session_state.personas = get_experiment_personas(exp["id"])
                     st.switch_page("pages/2_Persona_Gallery.py")
-                if cols[3].button("Delete", key=f"delete_{exp['id']}", use_container_width=True,
-                                  help="Hides this from your view only — the data stays in the database."):
+                if cols[3].button("Delete", key=f"delete_{exp['id']}", use_container_width=True):
                     st.session_state.dismissed_experiment_ids.add(exp["id"])
                     st.rerun()
