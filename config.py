@@ -41,7 +41,8 @@ USE_MOCK_DATA = _get_setting("USE_MOCK_DATA", "true").lower() == "true"
 
 # ── Backend ──────────────────────────────────────────────────────────────────
 BACKEND_BASE_URL = _get_setting("BACKEND_BASE_URL", "http://localhost:8000/api")
-API_TIMEOUT_SECONDS = 30
+API_TIMEOUT_SECONDS = 60  # generous, since free-tier backend hosts (Render, etc.) can cold-start slowly
+GROQ_TIMEOUT_SECONDS = 30
 
 # ── Groq (only used if frontend calls the LLM directly; optional) ───────────
 GROQ_API_KEY = _get_setting("GROQ_API_KEY", "")

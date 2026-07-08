@@ -12,18 +12,26 @@ TO GO LIVE:
 import json
 import requests
 import streamlit as st
-from config import USE_MOCK_DATA, BACKEND_BASE_URL, API_TIMEOUT_SECONDS, GROQ_API_KEY, GROQ_MODEL
+from config import USE_MOCK_DATA, BACKEND_BASE_URL, API_TIMEOUT_SECONDS, GROQ_TIMEOUT_SECONDS, GROQ_API_KEY, GROQ_MODEL
 from services import mock_data
 
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
-def _post(path: str, payload: dict) -> dict:
+def _post(path: str, payload: dict, _retrying: bool = False) -> dict:
     url = f"{BACKEND_BASE_URL}{path}"
     try:
         resp = requests.post(url, json=payload, timeout=API_TIMEOUT_SECONDS)
         resp.raise_for_status()
         return resp.json()
+    except requests.exceptions.Timeout:
+        if not _retrying:
+            # Likely a free-tier cold start (e.g. Render) — the first request
+            # wakes the server but times out; retry once now that it's warm.
+            st.toast("Backend is waking up, retrying...", icon="⏳")
+            return _post(path, payload, _retrying=True)
+        st.error(f"Backend request timed out twice ({url}). The server may be sleeping — try again in a minute.")
+        return {}
     except requests.HTTPError as e:
         detail = ""
         try:
@@ -37,12 +45,18 @@ def _post(path: str, payload: dict) -> dict:
         return {}
 
 
-def _get(path: str) -> dict:
+def _get(path: str, _retrying: bool = False) -> dict:
     url = f"{BACKEND_BASE_URL}{path}"
     try:
         resp = requests.get(url, timeout=API_TIMEOUT_SECONDS)
         resp.raise_for_status()
         return resp.json()
+    except requests.exceptions.Timeout:
+        if not _retrying:
+            st.toast("Backend is waking up, retrying...", icon="⏳")
+            return _get(path, _retrying=True)
+        st.error(f"Backend request timed out twice ({url}). The server may be sleeping — try again in a minute.")
+        return {}
     except requests.HTTPError as e:
         detail = ""
         try:
@@ -250,7 +264,7 @@ def _call_groq(messages: list[dict], max_tokens: int = 220) -> str:
         "temperature": 0.8,
     }
     try:
-        resp = requests.post(GROQ_CHAT_URL, headers=headers, json=payload, timeout=API_TIMEOUT_SECONDS)
+        resp = requests.post(GROQ_CHAT_URL, headers=headers, json=payload, timeout=GROQ_TIMEOUT_SECONDS)
         resp.raise_for_status()
         data = resp.json()
         return data["choices"][0]["message"]["content"].strip()
