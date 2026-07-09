@@ -1,15 +1,19 @@
 """Generates a downloadable PDF research report using reportlab.
 
-Chart images are rendered via Plotly + kaleido (a headless, pure-Python static
-image exporter — no browser/Chrome dependency) so the PDF shows the same
-adoption/sentiment/theme charts visible in the in-app report, not just tables.
+Chart images are rendered via matplotlib (pure Python, no browser/Chrome
+dependency — unlike newer Plotly+kaleido versions, which require a separate
+Chrome download that isn't available in Streamlit Cloud's container) so the
+PDF shows the same adoption/sentiment/theme charts visible in the in-app
+report, not just tables.
 """
 
 import io
 from datetime import date
 
-import pandas as pd
-import plotly.express as px
+import matplotlib
+matplotlib.use("Agg")  # headless backend — no display needed, safe for server-side rendering
+import matplotlib.pyplot as plt
+
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
@@ -18,58 +22,68 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 )
 
-from styles.theme import SENTIMENT_COLORS, CONTINUOUS_SCALE, ACCENT, ACCENT_DARK
+from styles.theme import SENTIMENT_COLORS, ACCENT, ACCENT_DARK, ACCENT_TINT_STRONG, INK_SOFT
 
 CONTENT_WIDTH = 6.5 * inch  # letter page minus 0.75in margins... matches doc margins below
 
 
-def _fig_to_image(fig, width_in=6.5, height_in=3.2):
-    """Renders a Plotly figure to a reportlab Image flowable via a PNG buffer."""
-    fig.update_layout(
-        paper_bgcolor="white", plot_bgcolor="white",
-        margin=dict(l=40, r=20, t=40, b=40), showlegend=True,
-    )
-    png_bytes = fig.to_image(format="png", width=int(width_in * 130), height=int(height_in * 130), scale=1.5)
-    return Image(io.BytesIO(png_bytes), width=width_in * inch, height=height_in * inch)
+def _mpl_fig_to_image(fig, width_in=6.5, height_in=3.0):
+    """Renders a matplotlib figure to a reportlab Image flowable via a PNG buffer."""
+    buf = io.BytesIO()
+    fig.tight_layout()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return Image(buf, width=width_in * inch, height=height_in * inch)
 
 
 def _adoption_chart_image(personas: list[dict]):
     if not personas:
         return None
-    df = pd.DataFrame([{"name": p["name"], "adoption_score": p["adoption_score"]} for p in personas])
-    fig = px.bar(
-        df, x="name", y="adoption_score", color="adoption_score",
-        title="Adoption Score by Persona",
-        labels={"adoption_score": "Likelihood (1-10)", "name": ""},
-        color_continuous_scale=CONTINUOUS_SCALE,
-    )
-    fig.update_traces(marker_line_width=0)
-    fig.update_layout(coloraxis_showscale=False)
-    return _fig_to_image(fig)
+    names = [p["name"] for p in personas]
+    scores = [p["adoption_score"] for p in personas]
+    colors_list = [ACCENT_DARK if s >= 7 else ACCENT_TINT_STRONG if s >= 4 else INK_SOFT for s in scores]
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.0))
+    ax.bar(names, scores, color=colors_list)
+    ax.set_title("Adoption Score by Persona", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Likelihood (1-10)")
+    ax.set_ylim(0, 10)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    plt.setp(ax.get_xticklabels(), rotation=25, ha="right", fontsize=8)
+    return _mpl_fig_to_image(fig)
 
 
 def _sentiment_chart_image(sentiment: dict):
     if not sentiment:
         return None
-    df = pd.DataFrame({"label": list(sentiment.keys()), "pct": list(sentiment.values())})
-    fig = px.pie(
-        df, names="label", values="pct", hole=0.5, title="Sentiment Breakdown",
-        color="label", color_discrete_map=SENTIMENT_COLORS,
+    labels = list(sentiment.keys())
+    values = list(sentiment.values())
+    pie_colors = [SENTIMENT_COLORS.get(label, ACCENT) for label in labels]
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.0))
+    wedges, texts, autotexts = ax.pie(
+        values, labels=labels, colors=pie_colors, autopct="%1.0f%%",
+        wedgeprops=dict(width=0.45), startangle=90,
     )
-    return _fig_to_image(fig, height_in=3.0)
+    ax.set_title("Sentiment Breakdown", fontsize=12, fontweight="bold")
+    return _mpl_fig_to_image(fig)
 
 
 def _theme_chart_image(themes: list[dict]):
     if not themes:
         return None
-    df = pd.DataFrame(themes)
-    fig = px.bar(
-        df, x="mentions_pct", y="theme", orientation="h",
-        title="Themes Mentioned", labels={"mentions_pct": "% Mentioned", "theme": ""},
-        color_discrete_sequence=[ACCENT_DARK],
-    )
-    fig.update_layout(yaxis=dict(autorange="reversed"))
-    return _fig_to_image(fig, height_in=2.6)
+    theme_labels = [t["theme"] for t in themes][::-1]
+    pcts = [t["mentions_pct"] for t in themes][::-1]
+
+    fig, ax = plt.subplots(figsize=(6.5, 2.6))
+    ax.barh(theme_labels, pcts, color=ACCENT_DARK)
+    ax.set_title("Themes Mentioned", fontsize=12, fontweight="bold")
+    ax.set_xlabel("% Mentioned")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    return _mpl_fig_to_image(fig, height_in=2.6)
 
 
 def build_report_pdf(experiment: dict, personas: list[dict], insights: dict) -> bytes:
