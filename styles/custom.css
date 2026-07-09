@@ -424,7 +424,7 @@ div[data-testid="stChatInput"] {
     font-family: var(--font-display);
     font-weight: 800;
     font-size: 2.3rem;
-    color: var(--accent-dark);
+    color: #2BB3A8;
     line-height: 1.2;
     margin-top: 0.2rem;
 }
