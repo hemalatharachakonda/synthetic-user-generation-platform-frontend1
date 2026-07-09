@@ -165,7 +165,8 @@ div[data-testid="stMetricValue"] * {
     font-size: 1.9rem;
     color: var(--accent-dark) !important;
 }
-div[data-testid="stMetricLabel"] {
+div[data-testid="stMetricLabel"],
+div[data-testid="stMetricLabel"] * {
     font-family: var(--font-mono);
     text-transform: uppercase;
     letter-spacing: 0.08em;
