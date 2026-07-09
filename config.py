@@ -1,16 +1,13 @@
 """
 Central configuration for the Synthetic User Generation Platform frontend.
 
-IMPORTANT — SWAPPING FROM MOCK DATA TO YOUR REAL BACKEND:
-1. Set USE_MOCK_DATA = False (or the Streamlit secret) to use the real backend
-   for Experiments + Persona generation. Survey, Interview, and Insights run on
-   Groq directly (when GROQ_API_KEY is set) regardless of this flag, since
-   those endpoints aren't built on the backend yet.
-2. Set BACKEND_BASE_URL to the deployed backend, including its /api/v1 prefix,
-   e.g. "https://synthetic-user-generation-platform-2.onrender.com/api/v1".
-3. Set GROQ_API_KEY for real Survey/Interview/Insights responses.
-Everything else in the app calls services/api_client.py, which already branches
-on USE_MOCK_DATA / GROQ_API_KEY, so no other files need to change.
+This app runs entirely without a backend server. Experiments and Personas are
+generated locally: names/ages/occupations come from local mock pools, while
+personality traits, adoption scores, bios, and quotes are generated live by
+Groq (when GROQ_API_KEY is set). Survey, Interview, and Insights work the
+same way. Set GROQ_API_KEY below (or as a Streamlit secret) to enable real
+AI-generated responses everywhere; without it, everything falls back to
+local sample data automatically, so the app always works either way.
 """
 
 import os
@@ -36,15 +33,9 @@ def _get_setting(key: str, default: str = "") -> str:
     return os.getenv(key, default)
 
 
-# ── Mode toggle ──────────────────────────────────────────────────────────────
-USE_MOCK_DATA = _get_setting("USE_MOCK_DATA", "true").lower() == "true"
-
-# ── Backend ──────────────────────────────────────────────────────────────────
-BACKEND_BASE_URL = _get_setting("BACKEND_BASE_URL", "http://localhost:8000/api")
-API_TIMEOUT_SECONDS = 60  # generous, since free-tier backend hosts (Render, etc.) can cold-start slowly
 GROQ_TIMEOUT_SECONDS = 30
 
-# ── Groq (only used if frontend calls the LLM directly; optional) ───────────
+# ── Groq — powers Persona/Survey/Interview/Insights generation ─────────────
 GROQ_API_KEY = _get_setting("GROQ_API_KEY", "")
 GROQ_MODEL = _get_setting("GROQ_MODEL", "openai/gpt-oss-120b")
 

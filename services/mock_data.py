@@ -1,10 +1,7 @@
 """
-Mock data generator.
-
-This simulates what your real backend (calling Groq) will eventually return.
-Every function here mirrors an endpoint in api_client.py's REAL_MODE branch,
-so when USE_MOCK_DATA=False, api_client.py calls your backend instead of these
-functions, and every page above it keeps working unchanged.
+Local sample-data generator. Used as the fallback whenever Groq is
+unavailable (no API key, or a call fails) for Personas, Survey, Interview,
+and Insights — so the app always works even without a Groq key configured.
 """
 
 import random
@@ -12,7 +9,48 @@ import uuid
 from utils.constants import PERSONALITY_TAG_POOL, OCCUPATIONS_POOL
 
 FIRST_NAMES = ["Sarah", "Mike", "Priya", "David", "Emma", "Raj", "Lucia",
-               "Tom", "Aisha", "Noah", "Wei", "Fatima"]
+               "Tom", "Aisha", "Noah", "Wei", "Fatima", "Ryan", "Monica",
+               "Holly", "Aaron", "Kevin", "Nancy", "Brittney", "Michelle",
+               "Angela", "Johnny", "Derek", "Suzanne", "Curtis", "Tamara",
+               "Kenneth", "Ronald", "Shannon", "Austin", "Anthony", "Kelly"]
+
+LAST_NAMES = ["Bowen", "Dennis", "Walter", "Curtis", "Garner", "Salinas",
+              "Brooks", "Martin", "Garza", "Hunter", "Garcia", "Thompson",
+              "Ruiz", "Brown", "Green", "Schmidt", "Martinez", "Bond",
+              "Gonzalez", "Rachakonda", "Patel", "Kim", "Nguyen", "Cohen",
+              "Rossi", "Okafor", "Ivanov", "Silva", "Khan", "Muller"]
+
+
+def random_roster(count: int) -> list[dict]:
+    """Generates the local, deterministic part of a persona: name, occupation,
+    avatar seed. Age, personality/adoption/bio/quote get filled in separately
+    (by Groq when available, via fill_traits_locally otherwise)."""
+    roster = []
+    for _ in range(count):
+        first = random.choice(FIRST_NAMES)
+        last = random.choice(LAST_NAMES)
+        roster.append({
+            "id": f"p_{uuid.uuid4().hex[:8]}",
+            "name": f"{first} {last}",
+            "occupation": random.choice(OCCUPATIONS_POOL),
+            "avatar_seed": _random_avatar_seed(),
+        })
+    return roster
+
+
+def fill_traits_locally(roster: list[dict], target_audience: str) -> list[dict]:
+    """Fills in age/tags/adoption_score/bio/quote for a roster using local
+    mock logic — the fallback path when Groq is unavailable or fails."""
+    for p in roster:
+        p.setdefault("age", random.randint(22, 58))
+        p["tags"] = random.sample(PERSONALITY_TAG_POOL, k=3)
+        p["adoption_score"] = round(random.uniform(3.0, 9.5), 1)
+        p["bio"] = (
+            f"{p['name']} is a {p['age']}-year-old {p['occupation'].lower()} who fits "
+            f"the target profile: {target_audience.strip()[:120]}."
+        )
+        p["quote"] = ""
+    return roster
 
 SAMPLE_QUOTES_POSITIVE = [
     "This would save me hours every week!",
@@ -111,29 +149,10 @@ def _random_avatar_seed():
 
 def generate_personas(product_name: str, description: str,
                        target_audience: str, objectives: str, count: int) -> list[dict]:
-    """Mocks POST /api/personas/generate"""
-    personas = []
-    used_names = random.sample(FIRST_NAMES, min(count, len(FIRST_NAMES)))
-    for i in range(count):
-        name = used_names[i] if i < len(used_names) else f"Persona {i+1}"
-        age = random.randint(22, 55)
-        occupation = random.choice(OCCUPATIONS_POOL)
-        tags = random.sample(PERSONALITY_TAG_POOL, k=3)
-        adoption_score = round(random.uniform(3.0, 9.5), 1)
-        personas.append({
-            "id": f"p_{uuid.uuid4().hex[:8]}",
-            "name": name,
-            "age": age,
-            "occupation": occupation,
-            "tags": tags,
-            "adoption_score": adoption_score,
-            "avatar_seed": _random_avatar_seed(),
-            "bio": (
-                f"{name} is a {age}-year-old {occupation.lower()} who fits the "
-                f"target profile: {target_audience.strip()[:120]}."
-            ),
-        })
-    return personas
+    """Fully local persona generation — used as the fallback when Groq is
+    unavailable. Names/ages/occupations plus randomized traits/scores/bio."""
+    roster = random_roster(count)
+    return fill_traits_locally(roster, target_audience)
 
 
 def run_survey_question(personas: list[dict], question: str) -> dict:

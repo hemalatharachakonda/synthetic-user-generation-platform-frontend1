@@ -1,5 +1,5 @@
 import streamlit as st
-from config import APP_NAME, APP_ICON, APP_TAGLINE, USE_MOCK_DATA
+from config import APP_NAME, APP_ICON, APP_TAGLINE, GROQ_API_KEY
 from utils.state_manager import init_session_state, has_experiment
 from styles.theme import load_css
 
@@ -10,8 +10,10 @@ css = load_css("styles/custom.css")
 if css:
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
-if USE_MOCK_DATA:
-    st.caption("Running in mock data mode — no real backend calls are being made.")
+if GROQ_API_KEY:
+    st.caption("Personas, surveys, interviews, and insights are generated live by Groq AI.")
+else:
+    st.caption("No Groq API key configured — running on local sample data only.")
 
 st.markdown(
     f"""
@@ -43,53 +45,22 @@ with c2:
 
 st.markdown('<div class="section-label">Recent Experiments</div>', unsafe_allow_html=True)
 
-if USE_MOCK_DATA:
-    recent = st.session_state.get("experiments_history", [])
-    if not recent:
-        st.info("No experiments logged yet. Start your first one above!")
-    else:
-        for exp in recent[-5:][::-1]:
-            with st.container(border=True):
-                cols = st.columns([3, 1])
-                cols[0].markdown(f"**{exp['product_name']}**")
-                pct = exp.get("would_use_pct", 0)
-                tier_color = "score-high" if pct >= 60 else "score-mid" if pct >= 40 else "score-low"
-                cols[1].markdown(
-                    f'<span class="score-badge {tier_color}">{pct}% WOULD USE</span>',
-                    unsafe_allow_html=True,
-                )
+dismissed = st.session_state.get("dismissed_experiment_ids", set())
+recent = [e for e in st.session_state.get("experiments_history", []) if e.get("id") not in dismissed]
+
+if not recent:
+    st.info("No experiments logged yet. Start your first one above!")
 else:
-    # Real backend is connected — pull actual persisted history from its
-    # database instead of in-memory session state, which resets every visit.
-    from services.api_client import list_experiments, get_experiment_personas
-
-    dismissed = st.session_state.get("dismissed_experiment_ids", set())
-    past_experiments = [e for e in list_experiments() if e["id"] not in dismissed]
-
-    if not past_experiments:
-        st.info("No experiments logged yet. Start your first one above!")
-    else:
-        for exp in past_experiments[:5]:
-            with st.container(border=True):
-                cols = st.columns([3, 1, 1, 1])
-                cols[0].markdown(f"**{exp['product_name']}**")
-                cols[0].caption(exp.get("description", "")[:100])
-                cols[1].markdown(
-                    f'<span class="tag-pill">{exp.get("status", "draft").upper()}</span>',
-                    unsafe_allow_html=True,
-                )
-                if cols[2].button("Load", key=f"load_{exp['id']}", use_container_width=True):
-                    fetched_personas = get_experiment_personas(exp["id"])
-                    if not fetched_personas:
-                        st.warning(
-                            f"Couldn't load personas for \"{exp['product_name']}\" — the "
-                            "backend returned no personas for this experiment. It may not "
-                            "have generated any yet, or the endpoint may have changed."
-                        )
-                    else:
-                        st.session_state.experiment = exp
-                        st.session_state.personas = fetched_personas
-                        st.switch_page("pages/2_Persona_Gallery.py")
-                if cols[3].button("Delete", key=f"delete_{exp['id']}", use_container_width=True):
-                    st.session_state.dismissed_experiment_ids.add(exp["id"])
-                    st.rerun()
+    for exp in recent[-5:][::-1]:
+        with st.container(border=True):
+            cols = st.columns([3, 1, 1])
+            cols[0].markdown(f"**{exp['product_name']}**")
+            pct = exp.get("would_use_pct", 0)
+            tier_color = "score-high" if pct >= 60 else "score-mid" if pct >= 40 else "score-low"
+            cols[1].markdown(
+                f'<span class="score-badge {tier_color}">{pct}% WOULD USE</span>',
+                unsafe_allow_html=True,
+            )
+            if cols[2].button("Delete", key=f"delete_{exp.get('id', exp['product_name'])}", use_container_width=True):
+                st.session_state.dismissed_experiment_ids.add(exp.get("id", exp["product_name"]))
+                st.rerun()
