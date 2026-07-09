@@ -138,7 +138,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] h3,
 div[data-testid="stVerticalBlockBorderWrapper"] {
     border-radius: 16px !important;
     border: 1px solid var(--border) !important;
-    background-color: var(--surface);
+    background-color: var(--surface) !important;
     box-shadow: var(--shadow-card);
 }
 div[data-testid="stVerticalBlockBorderWrapper"] p,
@@ -152,7 +152,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] .stCaption {
 
 /* ── Metrics ─────────────────────────────────────────────────── */
 div[data-testid="stMetric"] {
-    background-color: var(--surface);
+    background-color: var(--surface) !important;
     border: 1px solid var(--border);
     border-radius: 14px;
     padding: 0.9rem 1rem;
@@ -162,14 +162,14 @@ div[data-testid="stMetricValue"] {
     font-family: var(--font-display);
     font-weight: 700;
     font-size: 1.9rem;
-    color: var(--accent-dark);
+    color: var(--accent-dark) !important;
 }
 div[data-testid="stMetricLabel"] {
     font-family: var(--font-mono);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 0.72rem;
-    color: var(--ink-soft);
+    color: var(--ink-soft) !important;
 }
 
 /* ── Inputs ──────────────────────────────────────────────────── */

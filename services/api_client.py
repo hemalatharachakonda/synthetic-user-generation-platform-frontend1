@@ -288,7 +288,8 @@ def get_persona_response(persona: dict, message: str, history: list[dict]) -> st
         if reply:
             return reply
         # fall through to mock on any failure so the UI never shows a blank response
-    return mock_data.get_persona_response(persona, message, history)
+    experiment = st.session_state.get("experiment") or {}
+    return mock_data.get_persona_response(persona, message, history, product_name=experiment.get("product_name"))
 
 
 # ── Insights ──────────────────────────────────────────────────────────────────

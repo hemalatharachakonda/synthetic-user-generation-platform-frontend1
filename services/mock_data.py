@@ -170,32 +170,35 @@ def run_survey_question(personas: list[dict], question: str) -> dict:
     return results
 
 
-def get_persona_response(persona: dict, message: str, history: list[dict]) -> str:
+def get_persona_response(persona: dict, message: str, history: list[dict], product_name: str = None) -> str:
     """Mocks POST /api/interview/message — a persona's conversational reply.
 
     Picks a canned response that's topically relevant to the question asked,
     instead of a fully random one, so "how much would you pay" doesn't get
-    answered with an unrelated line about existing tools.
+    answered with an unrelated line about existing tools. Weaves in the
+    actual product name when known, so it doesn't read as totally generic.
     """
     msg = message.lower()
+    p = product_name.strip() if product_name else None
+    ref = f" for {p}" if p else ""
 
     if any(w in msg for w in ["pay", "price", "cost", "$", "afford", "subscription"]):
-        return "Honestly, price matters to me — I'd expect something in the $10-15/month range."
+        return f"Honestly, price matters to me — I'd expect something in the $10-15/month range{ref}."
     if any(w in msg for w in ["concern", "worry", "privacy", "risk", "trust", "data"]):
-        return "That's a good question. My biggest concern would be data privacy."
+        return f"That's a good question. My biggest concern{ref} would be data privacy."
     if any(w in msg for w in ["mobile", "daily", "phone", "app", "often", "frequently"]):
-        return "If it worked smoothly on mobile, I'd probably use it daily."
+        return f"If it worked smoothly on mobile, I'd probably use{' ' + p if p else ' it'} daily."
     if any(w in msg for w in ["compare", "today", "currently", "alternative", "instead", "existing"]):
-        return "I like the idea, but I'd need to see how it fits with tools I already use."
+        return f"I like the idea{ref}, but I'd need to see how it fits with tools I already use."
     if any(w in msg for w in ["feature", "switch", "want", "need", "convince"]):
-        return "As someone balancing a lot day-to-day, I'd want this to save me time, not add steps."
+        return f"As someone balancing a lot day-to-day, I'd want{ref if ref else ' this'} to save me time, not add steps."
 
     canned = [
-        "As someone balancing a lot day-to-day, I'd want this to save me time, not add steps.",
-        "Honestly, price matters to me — I'd expect something in the $10-15/month range.",
-        "I like the idea, but I'd need to see how it fits with tools I already use.",
-        "That's a good question. My biggest concern would be data privacy.",
-        "If it worked smoothly on mobile, I'd probably use it daily.",
+        f"As someone balancing a lot day-to-day, I'd want{ref if ref else ' this'} to save me time, not add steps.",
+        f"Honestly, price matters to me — I'd expect something in the $10-15/month range{ref}.",
+        f"I like the idea{ref}, but I'd need to see how it fits with tools I already use.",
+        f"That's a good question. My biggest concern{ref} would be data privacy.",
+        f"If it worked smoothly on mobile, I'd probably use{' ' + p if p else ' it'} daily.",
     ]
     return random.choice(canned)
 
