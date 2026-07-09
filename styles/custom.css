@@ -158,7 +158,8 @@ div[data-testid="stMetric"] {
     padding: 0.9rem 1rem;
     box-shadow: var(--shadow-card);
 }
-div[data-testid="stMetricValue"] {
+div[data-testid="stMetricValue"],
+div[data-testid="stMetricValue"] > * {
     font-family: var(--font-display);
     font-weight: 700;
     font-size: 1.9rem;
@@ -424,7 +425,7 @@ div[data-testid="stChatInput"] {
     font-family: var(--font-display);
     font-weight: 800;
     font-size: 2.3rem;
-    color: #2BB3A8;
+    color: var(--accent-dark);
     line-height: 1.2;
     margin-top: 0.2rem;
 }
