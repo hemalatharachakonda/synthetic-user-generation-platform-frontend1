@@ -159,7 +159,7 @@ div[data-testid="stMetric"] {
     box-shadow: var(--shadow-card);
 }
 div[data-testid="stMetricValue"],
-div[data-testid="stMetricValue"] > * {
+div[data-testid="stMetricValue"] * {
     font-family: var(--font-display);
     font-weight: 700;
     font-size: 1.9rem;
