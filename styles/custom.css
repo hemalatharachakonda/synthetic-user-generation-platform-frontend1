@@ -303,7 +303,7 @@ div[data-testid="stChatInput"] {
     font-family: var(--font-mono);
     font-size: 0.68rem;
     letter-spacing: 0.08em;
-    color: var(--ink-soft) !important;
+    color: var(--ink-soft);
     text-transform: uppercase;
     margin-top: 6px;
 }
@@ -311,12 +311,12 @@ div[data-testid="stChatInput"] {
     font-family: var(--font-display);
     font-size: 1.25rem;
     font-weight: 700;
-    color: var(--ink) !important;
+    color: var(--ink);
     margin: 0.15rem 0 0 0;
 }
 .specimen-meta {
     font-size: 0.85rem;
-    color: var(--ink-soft) !important;
+    color: var(--ink-soft);
 }
 
 /* Score badges — one accent hue at different weights, not three colors */

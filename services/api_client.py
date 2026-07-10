@@ -164,10 +164,7 @@ def _run_survey_via_groq(personas: list[dict], question: str) -> dict | None:
         "reacting to a real product survey question. For EACH persona in the "
         "roster, answer fully in character based on their age, occupation, "
         "traits, and bio — different personas should give genuinely different "
-        "answers, not near-identical ones. Every comment must reference something "
-        "SPECIFIC about the actual product described below (a named feature, the "
-        "problem it solves, its price/value tradeoff) — never a generic answer "
-        "that could apply to any app. Respond with ONLY a JSON array — no "
+        "answers, not near-identical ones. Respond with ONLY a JSON array — no "
         "markdown, no code fences, no commentary — in exactly this shape, one "
         "entry per persona id given, same order:\n"
         '[{"persona_id": "...", "score": 1-10 (how positively they answer / '
@@ -271,16 +268,12 @@ def _persona_system_prompt(persona: dict) -> str:
         f"\"{experiment.get('product_name', 'this product')}\": "
         f"{experiment.get('description', 'No description provided.')} "
         f"Target audience it's built for: {experiment.get('target_audience', 'not specified')}. "
-        f"What this research is trying to learn: {experiment.get('objectives', 'general reactions')}. "
         "Answer the interviewer's questions fully in character, in first person. "
         "Keep answers conversational and concise (2-4 sentences), grounded in your "
         "persona's life, priorities, and personality — not generic marketing-speak. "
-        "Every answer must reference something SPECIFIC about this actual product "
-        "(a named feature, the problem it solves, its target use case) — never a "
-        "generic answer that could apply to any app. Give honest, specific opinions: "
-        "if skeptical, say so and why; if enthusiastic, say so and why. Directly "
-        "address what was actually asked. Never break character or mention that you "
-        "are an AI."
+        "Give honest, specific opinions: if skeptical, say so and why; if enthusiastic, "
+        "say so and why. Directly address what was actually asked. Never break character "
+        "or mention that you are an AI."
     )
 
 
@@ -295,7 +288,8 @@ def get_persona_response(persona: dict, message: str, history: list[dict]) -> st
         if reply:
             return reply
         # fall through to mock on any failure so the UI never shows a blank response
-    return mock_data.get_persona_response(persona, message, history)
+    experiment = st.session_state.get("experiment") or {}
+    return mock_data.get_persona_response(persona, message, history, product_name=experiment.get("product_name"))
 
 
 # ── Insights ──────────────────────────────────────────────────────────────────
