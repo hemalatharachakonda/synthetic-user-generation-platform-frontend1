@@ -43,11 +43,11 @@ with col1:
     st.download_button(
         "Download PDF", data=pdf_bytes,
         file_name=f"{experiment['product_name'].replace(' ', '_')}_report.pdf",
-        mime="application/pdf", use_container_width=True, type="primary",
+        mime="application/pdf", width='stretch', type="primary",
     )
 
 with col2:
-    if st.button("View Full Dashboard", use_container_width=True):
+    if st.button("View Full Dashboard", width='stretch'):
         st.switch_page("pages/5_Insights_Dashboard.py")
 
 if not st.session_state.report_generated:

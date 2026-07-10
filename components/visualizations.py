@@ -18,7 +18,7 @@ def adoption_chart(personas: list[dict]):
     )
     fig.update_layout(**PLOTLY_LAYOUT, showlegend=False)
     fig.update_traces(marker_line_width=0)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def sentiment_donut(sentiment: dict):
@@ -35,7 +35,7 @@ def sentiment_donut(sentiment: dict):
     )
     fig.update_layout(**PLOTLY_LAYOUT)
     fig.update_traces(marker_line_color="#FFFFFF", marker_line_width=2, textfont_family="JetBrains Mono")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def theme_bars(themes: list[dict]):
@@ -51,7 +51,7 @@ def theme_bars(themes: list[dict]):
     )
     fig.update_layout(**PLOTLY_LAYOUT, showlegend=False)
     fig.update_traces(marker_line_width=0)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def persona_segment_heatmap(personas: list[dict]):
@@ -67,4 +67,4 @@ def persona_segment_heatmap(personas: list[dict]):
         color_continuous_scale=CONTINUOUS_SCALE,
     )
     fig.update_layout(**PLOTLY_LAYOUT)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')

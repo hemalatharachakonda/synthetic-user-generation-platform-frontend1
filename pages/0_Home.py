@@ -35,10 +35,10 @@ st.markdown(
 
 c1, c2 = st.columns(2)
 with c1:
-    if st.button("Start New Experiment", use_container_width=True, type="primary"):
+    if st.button("Start New Experiment", width='stretch', type="primary"):
         st.switch_page("pages/1_Experiment_Workspace.py")
 with c2:
-    if st.button("View Dashboard", use_container_width=True, disabled=not has_experiment()):
+    if st.button("View Dashboard", width='stretch', disabled=not has_experiment()):
         st.switch_page("pages/5_Insights_Dashboard.py")
     if not has_experiment():
         st.caption("Create an experiment first to unlock the dashboard.")
@@ -61,6 +61,6 @@ else:
                 f'<span class="score-badge {tier_color}">{pct}% WOULD USE</span>',
                 unsafe_allow_html=True,
             )
-            if cols[2].button("Delete", key=f"delete_{exp.get('id', exp['product_name'])}", use_container_width=True):
+            if cols[2].button("Delete", key=f"delete_{exp.get('id', exp['product_name'])}", width='stretch'):
                 st.session_state.dismissed_experiment_ids.add(exp.get("id", exp["product_name"]))
                 st.rerun()

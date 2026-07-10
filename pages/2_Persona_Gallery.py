@@ -57,11 +57,11 @@ if not filtered:
 st.divider()
 c1, c2, c3 = st.columns(3)
 with c1:
-    if st.button("▶ Run Survey", use_container_width=True, type="primary"):
+    if st.button("▶ Run Survey", width='stretch', type="primary"):
         st.switch_page("pages/3_Survey_Mode.py")
 with c2:
-    if st.button("▶ Start Interviews", use_container_width=True):
+    if st.button("▶ Start Interviews", width='stretch'):
         st.switch_page("pages/4_Interview_Mode.py")
 with c3:
-    if st.button("Analyze", use_container_width=True):
+    if st.button("Analyze", width='stretch'):
         st.switch_page("pages/5_Insights_Dashboard.py")
