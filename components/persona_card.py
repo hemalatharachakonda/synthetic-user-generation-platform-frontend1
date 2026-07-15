@@ -37,11 +37,11 @@ def persona_card(persona: dict, on_interview=None, on_details=None):
 
         col_a, col_b = st.columns(2)
         with col_a:
-            if st.button("Interview", key=f"int_{persona['id']}", width='stretch'):
+            if st.button("Interview", key=f"int_{persona['id']}", use_container_width=True):
                 if on_interview:
                     on_interview(persona["id"])
         with col_b:
-            if st.button("Field Notes", key=f"det_{persona['id']}", width='stretch'):
+            if st.button("Field Notes", key=f"det_{persona['id']}", use_container_width=True):
                 if on_details:
                     on_details(persona["id"])
                 else:

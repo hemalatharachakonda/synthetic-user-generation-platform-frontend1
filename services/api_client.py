@@ -258,6 +258,29 @@ def _call_groq(messages: list[dict], max_tokens: int = 220) -> str:
         return ""
 
 
+def _persona_survey_context(persona: dict) -> str:
+    """Pulls this persona's own prior Survey Mode answers (if any) so their
+    Interview Mode opinions stay consistent instead of contradicting what
+    they already said when asked the same kind of question earlier."""
+    questions = st.session_state.get("survey_questions") or []
+    responses = st.session_state.get("survey_responses") or {}
+    pid = persona["id"]
+
+    lines = []
+    for q_idx, q_text in enumerate(questions):
+        answer = (responses.get(q_idx) or {}).get(pid)
+        if answer:
+            lines.append(f'- Asked "{q_text}", you rated it {answer.get("score", "-")}/10 '
+                         f'and said: "{answer.get("comment", "")}"')
+
+    if not lines:
+        return ""
+    return (
+        "\n\nIMPORTANT — you already answered some survey questions about this product earlier. "
+        "Stay consistent with these prior answers; do not contradict them:\n" + "\n".join(lines)
+    )
+
+
 def _persona_system_prompt(persona: dict) -> str:
     experiment = st.session_state.get("experiment") or {}
     return (
@@ -274,6 +297,7 @@ def _persona_system_prompt(persona: dict) -> str:
         "Give honest, specific opinions: if skeptical, say so and why; if enthusiastic, "
         "say so and why. Directly address what was actually asked. Never break character "
         "or mention that you are an AI."
+        + _persona_survey_context(persona)
     )
 
 

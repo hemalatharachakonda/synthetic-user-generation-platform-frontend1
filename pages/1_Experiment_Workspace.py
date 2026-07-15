@@ -43,7 +43,7 @@ with st.form("experiment_form"):
         max_value=MAX_PERSONA_COUNT, value=DEFAULT_PERSONA_COUNT,
     )
 
-    submitted = st.form_submit_button("Generate Personas", type="primary", width='stretch')
+    submitted = st.form_submit_button("Generate Personas", type="primary", use_container_width=True)
 
 if submitted:
     errors = validate_experiment_form(product_name, description, target_audience, objectives)
