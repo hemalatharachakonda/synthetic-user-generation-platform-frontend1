@@ -74,3 +74,18 @@ with col2:
 with col3:
     if st.button("View Insights"):
         st.switch_page("pages/5_Insights_Dashboard.py")
+
+st.markdown('<div class="section-label">Ask Another Question</div>', unsafe_allow_html=True)
+with st.form("add_question", clear_on_submit=True):
+    new_q = st.text_input("Type a new question to ask all personas")
+    add = st.form_submit_button("Add & Ask")
+if add:
+    new_q = new_q.strip()
+    if not new_q:
+        st.error("Please enter a question.")
+    elif len(st.session_state.survey_questions) >= MAX_SURVEY_QUESTIONS:
+        st.error(f"Maximum of {MAX_SURVEY_QUESTIONS} questions per survey reached.")
+    else:
+        st.session_state.survey_questions.append(new_q)
+        st.session_state.current_question_index = len(st.session_state.survey_questions) - 1
+        st.rerun()

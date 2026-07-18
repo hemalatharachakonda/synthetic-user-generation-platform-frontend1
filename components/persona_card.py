@@ -17,31 +17,30 @@ def persona_card(persona: dict, on_interview=None, on_details=None):
             st.image(avatar_url, width=64)
         with col2:
             st.markdown(
-                f"""
-                <div class="specimen-id">{specimen_id}</div>
-                <div class="specimen-name">{persona['name']}</div>
-                <div class="specimen-meta">{persona['age']} · {persona['occupation']} · {persona.get('location', '')}</div>
-                """,
+                f'<div style="background: var(--surface); border-radius: 10px; '
+                f'padding: 0.35rem 0.6rem;">'
+                f'<div class="specimen-id" style="color: var(--ink-soft);">{specimen_id}</div>'
+                f'<div class="specimen-name" style="color: var(--ink);">{persona["name"]}</div>'
+                f'<div class="specimen-meta" style="color: var(--ink-soft);">'
+                f'{persona["age"]} · {persona["occupation"]} · {persona.get("location", "")}</div>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
 
         st.markdown(
-            f"""
-            <div style="margin: 0.6rem 0 0.3rem 0;">
-                <span class="score-badge {tier_class}">{persona['adoption_score']}/10 ADOPTION</span>
-            </div>
-            <div style="margin-bottom: 0.4rem;">{tags_html}</div>
-            """,
+            f'<div style="margin: 0.6rem 0 0.3rem 0;">'
+            f'<span class="score-badge {tier_class}">{persona["adoption_score"]}/10 ADOPTION</span></div>'
+            f'<div style="margin-bottom: 0.4rem;">{tags_html}</div>',
             unsafe_allow_html=True,
         )
 
         col_a, col_b = st.columns(2)
         with col_a:
-            if st.button("Interview", key=f"int_{persona['id']}", use_container_width=True):
+            if st.button("Interview", key=f"int_{persona['id']}", width='stretch'):
                 if on_interview:
                     on_interview(persona["id"])
         with col_b:
-            if st.button("Field Notes", key=f"det_{persona['id']}", use_container_width=True):
+            if st.button("Field Notes", key=f"det_{persona['id']}", width='stretch'):
                 if on_details:
                     on_details(persona["id"])
                 else:

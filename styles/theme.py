@@ -48,6 +48,12 @@ COLORWAY = [ACCENT_DARK, ACCENT, ACCENT_TINT_STRONG, INK_SOFT, BORDER, BG_SOFT]
 # Continuous scale used for adoption-score bar charts
 CONTINUOUS_SCALE = [[0, SURFACE_ALT], [0.5, ACCENT_TINT_STRONG], [1, ACCENT_DARK]]
 
+# Dedicated bar-chart scale — CONTINUOUS_SCALE's near-white low end (SURFACE_ALT)
+# is intentional for the heatmap (fading to background = "low density"), but it
+# makes low-value bars nearly invisible against a white chart background. Bars
+# always need a visible fill, so this scale never goes lighter than a solid tint.
+BAR_SCALE = [[0, ACCENT_TINT_STRONG], [1, ACCENT_DARK]]
+
 # Shared Plotly layout — spread this into fig.update_layout(**PLOTLY_LAYOUT)
 PLOTLY_LAYOUT = dict(
     paper_bgcolor=SURFACE,

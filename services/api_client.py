@@ -23,6 +23,14 @@ from services.data_processor import score_from_answer_text
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
+def _record_backend_result(ok: bool, path: str, detail: str = ""):
+    """Tracks whether the last backend call succeeded, so the UI can show a
+    clear connected/unreachable status instead of silently falling back
+    forever with no indication anything is wrong."""
+    st.session_state["_backend_status"] = "connected" if ok else "unreachable"
+    st.session_state["_backend_last_error"] = "" if ok else f"{path} — {detail}"
+
+
 def _backend_get(path: str, params: dict = None):
     """GET against the real backend. Returns parsed JSON, or None on any
     failure (backend not configured, unreachable, non-2xx, bad JSON) so
@@ -31,10 +39,12 @@ def _backend_get(path: str, params: dict = None):
     if not BACKEND_BASE_URL:
         return None
     try:
-        resp = requests.get(f"{BACKEND_BASE_URL}{path}", params=params, timeout=BACKEND_TIMEOUT_SECONDS)
+        resp = requests.get(f"{BACKEND_BASE_URL}/api/v1{path}", params=params, timeout=BACKEND_TIMEOUT_SECONDS)
         resp.raise_for_status()
+        _record_backend_result(True, path)
         return resp.json()
-    except (requests.RequestException, ValueError):
+    except (requests.RequestException, ValueError) as e:
+        _record_backend_result(False, path, str(e))
         return None
 
 
@@ -43,10 +53,12 @@ def _backend_post(path: str, json_body: dict = None):
     if not BACKEND_BASE_URL:
         return None
     try:
-        resp = requests.post(f"{BACKEND_BASE_URL}{path}", json=json_body, timeout=BACKEND_TIMEOUT_SECONDS)
+        resp = requests.post(f"{BACKEND_BASE_URL}/api/v1{path}", json=json_body, timeout=BACKEND_TIMEOUT_SECONDS)
         resp.raise_for_status()
+        _record_backend_result(True, path)
         return resp.json()
-    except (requests.RequestException, ValueError):
+    except (requests.RequestException, ValueError) as e:
+        _record_backend_result(False, path, str(e))
         return None
 
 
@@ -54,17 +66,19 @@ def _backend_put(path: str, json_body: dict = None):
     if not BACKEND_BASE_URL:
         return None
     try:
-        resp = requests.put(f"{BACKEND_BASE_URL}{path}", json=json_body, timeout=BACKEND_TIMEOUT_SECONDS)
+        resp = requests.put(f"{BACKEND_BASE_URL}/api/v1{path}", json=json_body, timeout=BACKEND_TIMEOUT_SECONDS)
         resp.raise_for_status()
+        _record_backend_result(True, path)
         return resp.json()
-    except (requests.RequestException, ValueError):
+    except (requests.RequestException, ValueError) as e:
+        _record_backend_result(False, path, str(e))
         return None
 
 
 # ── Experiments ───────────────────────────────────────────────────────────────
 
 def create_experiment(product_name, description, target_audience, objectives, persona_count=6) -> dict:
-    backend = _backend_post("/api/experiments", {
+    backend = _backend_post("/experiments", {
         "title": product_name,
         "product_description": description,
         "target_audience": target_audience,
@@ -99,7 +113,7 @@ def list_recent_experiments() -> list[dict]:
     running/completed) from the backend dashboard overview. Returns an empty
     list if no backend is configured or it's unreachable — callers should
     fall back to session-local history (experiments_history) in that case."""
-    data = _backend_get("/api/dashboard/overview")
+    data = _backend_get("/dashboard/overview")
     if not data:
         return []
     return data.get("recent_experiments", [])
@@ -107,7 +121,7 @@ def list_recent_experiments() -> list[dict]:
 
 def get_experiment(experiment_id: str) -> dict | None:
     """Fetches full experiment details for resuming a previous session."""
-    backend = _backend_get(f"/api/experiments/{experiment_id}")
+    backend = _backend_get(f"/experiments/{experiment_id}")
     if not backend:
         return None
     return {
@@ -124,7 +138,7 @@ def get_experiment(experiment_id: str) -> dict | None:
 def get_personas_for_experiment(experiment_id: str) -> list[dict]:
     """Fetches previously-generated personas for an experiment being
     resumed. Returns an empty list on any failure."""
-    backend = _backend_get(f"/api/personas/experiment/{experiment_id}")
+    backend = _backend_get(f"/personas/experiment/{experiment_id}")
     if not backend:
         return []
     return [_map_backend_persona(p) for p in backend.get("items", [])]
@@ -244,7 +258,7 @@ def _enrich_personas_via_groq(roster: list[dict], product_name: str, description
 
 def generate_personas(experiment: dict, product_name, description, target_audience, objectives, count) -> list[dict]:
     if experiment.get("_backend") and experiment.get("id"):
-        backend = _backend_post("/api/personas/generate", {
+        backend = _backend_post("/personas/generate", {
             "experiment_id": experiment["id"],
             "persona_count": count,
         })
@@ -352,7 +366,7 @@ def _run_survey_via_backend(experiment_id: str, question: str) -> dict | None:
     Mode can keep asking one question at a time against a backend built for
     batched multi-question surveys. Returns {persona_id: {score, comment}}
     or None on any failure so the caller can fall back cleanly."""
-    created = _backend_post("/api/surveys", {
+    created = _backend_post("/surveys", {
         "experiment_id": experiment_id,
         "title": question[:190] or "Survey question",
         "questions": [question],
@@ -360,7 +374,7 @@ def _run_survey_via_backend(experiment_id: str, question: str) -> dict | None:
     if not created or not created.get("id"):
         return None
 
-    executed = _backend_post("/api/surveys/execute", {"survey_id": created["id"]})
+    executed = _backend_post("/surveys/execute", {"survey_id": created["id"]})
     if not executed or not executed.get("persona_responses"):
         return None
 
@@ -496,20 +510,58 @@ def _get_or_create_interview_session(experiment_id: str, persona_id: str) -> str
     if persona_id in cache:
         return cache[persona_id]
 
-    existing = _backend_get("/api/interviews", params={"experiment_id": experiment_id, "persona_id": persona_id})
+    existing = _backend_get("/interviews", params={"experiment_id": experiment_id, "persona_id": persona_id})
     if existing and existing.get("items"):
         session_id = existing["items"][0]["id"]
         cache[persona_id] = session_id
         return session_id
 
-    created = _backend_post("/api/interviews", {"experiment_id": experiment_id, "persona_id": persona_id})
+    created = _backend_post("/interviews", {"experiment_id": experiment_id, "persona_id": persona_id})
     if created and created.get("id"):
         cache[persona_id] = created["id"]
         return created["id"]
     return None
 
 
-def get_interview_history(experiment_id: str, persona_id: str) -> list[dict]:
+def get_survey_history(experiment_id: str) -> list[dict]:
+    """Fetches every survey question ever asked in this experiment, with
+    every persona's answer, for the full dashboard view. Returns a flat
+    list of {question, persona_id, persona_name, answer, rating} rows.
+    Returns [] on any failure or if no surveys exist yet."""
+    listing = _backend_get(f"/surveys/experiment/{experiment_id}")
+    if not listing or not listing.get("items"):
+        return []
+
+    rows = []
+    for survey in listing["items"]:
+        detail = _backend_get(f"/surveys/{survey['id']}/responses")
+        if not detail:
+            continue
+        for pr in detail.get("persona_responses", []):
+            for resp in pr.get("responses", []):
+                rows.append({
+                    "question": resp.get("question", survey.get("title", "")),
+                    "persona_id": pr.get("persona_id"),
+                    "persona_name": pr.get("persona_name", "Unknown"),
+                    "answer": resp.get("answer", ""),
+                    "rating": resp.get("rating"),
+                })
+    return rows
+
+
+def get_all_interview_transcripts(experiment_id: str) -> dict:
+    """Fetches every interview session for this experiment, for the full
+    dashboard view. Returns {persona_id: [{role, content}, ...]}. Returns
+    {} on any failure or if no interviews exist yet."""
+    listing = _backend_get("/interviews", params={"experiment_id": experiment_id})
+    if not listing or not listing.get("items"):
+        return {}
+    return {
+        session["persona_id"]: [
+            {"role": m.get("role"), "content": m.get("content")} for m in session.get("messages", [])
+        ]
+        for session in listing["items"]
+    }
     """Fetches this persona's persisted conversation so far, to hydrate
     chat_history when (re)opening Interview Mode — including after a
     browser refresh or a brand new session, since it's backend-stored, not
@@ -518,7 +570,7 @@ def get_interview_history(experiment_id: str, persona_id: str) -> list[dict]:
     session_id = _get_or_create_interview_session(experiment_id, persona_id)
     if not session_id:
         return []
-    session = _backend_get(f"/api/interviews/{session_id}")
+    session = _backend_get(f"/interviews/{session_id}")
     if not session:
         return []
     return [{"role": m.get("role"), "content": m.get("content")} for m in session.get("messages", [])]
@@ -528,7 +580,7 @@ def _get_persona_response_via_backend(experiment_id: str, persona: dict, message
     session_id = _get_or_create_interview_session(experiment_id, persona["id"])
     if not session_id:
         return None
-    result = _backend_post(f"/api/interviews/{session_id}/message", {
+    result = _backend_post(f"/interviews/{session_id}/message", {
         "persona_id": persona["id"],
         "message": message,
     })
@@ -660,7 +712,7 @@ def _extract_suggestions_via_groq(personas: list[dict], survey_responses: dict, 
 def extract_insights(personas: list[dict], survey_responses: dict, chat_history: dict) -> dict:
     experiment = st.session_state.get("experiment") or {}
     if experiment.get("_backend") and experiment.get("id"):
-        backend = _backend_post(f"/api/insights/generate/{experiment['id']}")
+        backend = _backend_post(f"/insights/generate/{experiment['id']}")
         if backend:
             return {
                 "would_use_pct": backend.get("would_use_pct", 0),

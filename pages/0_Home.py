@@ -11,8 +11,17 @@ css = load_css("styles/custom.css")
 if css:
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
-if BACKEND_BASE_URL:
+backend_recent = list_recent_experiments() if BACKEND_BASE_URL else []
+
+if BACKEND_BASE_URL and st.session_state.get("_backend_status") == "connected":
     st.caption("Connected to backend — experiments, personas, and interviews persist and resume across sessions.")
+elif BACKEND_BASE_URL:
+    st.warning(
+        f"Backend URL is set but not reachable right now, so this session is running on local/Groq "
+        f"data instead (nothing will persist). If he's on Render free tier, the first request after "
+        f"idling can take 30-60s to wake up — try reloading in a minute. "
+        f"Details: {st.session_state.get('_backend_last_error', 'unknown error')}"
+    )
 elif GROQ_API_KEY:
     st.caption("Personas, surveys, interviews, and insights are generated live by Groq AI. No backend configured — nothing persists across sessions.")
 else:
@@ -38,10 +47,10 @@ st.markdown(
 
 c1, c2 = st.columns(2)
 with c1:
-    if st.button("Start New Experiment", use_container_width=True, type="primary"):
+    if st.button("Start New Experiment", width='stretch', type="primary"):
         st.switch_page("pages/1_Experiment_Workspace.py")
 with c2:
-    if st.button("View Dashboard", use_container_width=True, disabled=not has_experiment()):
+    if st.button("View Dashboard", width='stretch', disabled=not has_experiment()):
         st.switch_page("pages/5_Insights_Dashboard.py")
     if not has_experiment():
         st.caption("Create an experiment first to unlock the dashboard.")
@@ -56,8 +65,6 @@ STATUS_LABELS = {
     "archived": ("Archived", "score-low"),
 }
 
-backend_recent = list_recent_experiments() if BACKEND_BASE_URL else []
-
 if backend_recent:
     dismissed = st.session_state.get("dismissed_experiment_ids", set())
     for exp in [e for e in backend_recent if e.get("id") not in dismissed]:
@@ -66,7 +73,7 @@ if backend_recent:
             cols[0].markdown(f"**{exp.get('title', 'Untitled experiment')}**")
             label, tier_class = STATUS_LABELS.get(exp.get("status"), ("Unknown", "score-mid"))
             cols[1].markdown(f'<span class="score-badge {tier_class}">{label.upper()}</span>', unsafe_allow_html=True)
-            if cols[2].button("Resume", key=f"resume_{exp['id']}", use_container_width=True):
+            if cols[2].button("Resume", key=f"resume_{exp['id']}", width='stretch'):
                 reset_experiment_state()
                 loaded = get_experiment(exp["id"])
                 if loaded:
@@ -100,6 +107,6 @@ else:
                     f'<span class="score-badge {tier_color}">{pct}% WOULD USE</span>',
                     unsafe_allow_html=True,
                 )
-                if cols[2].button("Delete", key=f"delete_{exp.get('id', exp['product_name'])}", use_container_width=True):
+                if cols[2].button("Delete", key=f"delete_{exp.get('id', exp['product_name'])}", width='stretch'):
                     st.session_state.dismissed_experiment_ids.add(exp.get("id", exp["product_name"]))
                     st.rerun()

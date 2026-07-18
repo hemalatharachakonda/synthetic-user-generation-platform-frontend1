@@ -1,7 +1,7 @@
 import plotly.express as px
 import pandas as pd
 import streamlit as st
-from styles.theme import SENTIMENT_COLORS, PLOTLY_LAYOUT, CONTINUOUS_SCALE, ACCENT
+from styles.theme import SENTIMENT_COLORS, PLOTLY_LAYOUT, CONTINUOUS_SCALE, BAR_SCALE, ACCENT, ACCENT_DARK
 
 
 def adoption_chart(personas: list[dict]):
@@ -14,11 +14,12 @@ def adoption_chart(personas: list[dict]):
         df, x="name", y="adoption_score", color="adoption_score",
         title="Would Use This Product?",
         labels={"adoption_score": "Likelihood (1-10)", "name": "Persona"},
-        color_continuous_scale=CONTINUOUS_SCALE,
+        color_continuous_scale=BAR_SCALE,
+        range_color=[1, 10],
     )
     fig.update_layout(**PLOTLY_LAYOUT, showlegend=False)
-    fig.update_traces(marker_line_width=0)
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_traces(marker_line_width=1.5, marker_line_color=ACCENT_DARK)
+    st.plotly_chart(fig, width='stretch')
 
 
 def sentiment_donut(sentiment: dict):
@@ -35,7 +36,7 @@ def sentiment_donut(sentiment: dict):
     )
     fig.update_layout(**PLOTLY_LAYOUT)
     fig.update_traces(marker_line_color="#FFFFFF", marker_line_width=2, textfont_family="JetBrains Mono")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def theme_bars(themes: list[dict]):
@@ -51,7 +52,7 @@ def theme_bars(themes: list[dict]):
     )
     fig.update_layout(**PLOTLY_LAYOUT, showlegend=False)
     fig.update_traces(marker_line_width=0)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def persona_segment_heatmap(personas: list[dict]):
@@ -67,4 +68,4 @@ def persona_segment_heatmap(personas: list[dict]):
         color_continuous_scale=CONTINUOUS_SCALE,
     )
     fig.update_layout(**PLOTLY_LAYOUT)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
