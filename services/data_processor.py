@@ -2,6 +2,39 @@
 
 import pandas as pd
 
+_POSITIVE_WORDS = [
+    "love", "great", "excellent", "amazing", "yes", "definitely", "excited",
+    "convenient", "helpful", "useful", "easy", "worth", "would use", "sign up",
+    "impressed", "fantastic", "perfect", "trust", "interested", "recommend",
+]
+_NEGATIVE_WORDS = [
+    "expensive", "concern", "worried", "no", "not sure", "confusing", "difficult",
+    "hesitant", "skeptical", "won't", "wouldn't", "unlikely", "doubt", "risky",
+    "complicated", "steep", "distrust", "avoid", "disappointed", "waste",
+]
+
+
+def score_from_answer_text(answer: str, confidence: float = 0.7) -> int:
+    """Derives a rough 1-10 adoption-style score from a free-text survey
+    answer, since the backend returns an answer + a self-reported model
+    confidence (0-1) rather than a numeric score. This is a simple keyword
+    heuristic, not sentiment analysis — good enough for a comparison badge,
+    not a substitute for the actual text (always shown alongside it)."""
+    text = (answer or "").lower()
+    pos_hits = sum(1 for w in _POSITIVE_WORDS if w in text)
+    neg_hits = sum(1 for w in _NEGATIVE_WORDS if w in text)
+
+    baseline = 5.5 + (pos_hits - neg_hits) * 1.1
+    # Confidence nudges the score away from the middle rather than setting it
+    # directly — a confident positive answer scores higher, a confident
+    # negative answer scores lower, but confidence alone never implies "good".
+    if pos_hits > neg_hits:
+        baseline += (confidence - 0.5) * 2
+    elif neg_hits > pos_hits:
+        baseline -= (confidence - 0.5) * 2
+
+    return int(round(max(1, min(10, baseline))))
+
 
 def personas_to_dataframe(personas: list[dict]) -> pd.DataFrame:
     if not personas:

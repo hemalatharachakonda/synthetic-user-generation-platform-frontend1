@@ -27,7 +27,7 @@ def survey_grid(personas: list[dict], responses: dict):
                         unsafe_allow_html=True,
                     )
                     st.markdown(f"**{p['name']}**")
-                    st.caption(f"{p['age']} · {p['occupation']}")
+                    st.caption(f"{p['age']} · {p['occupation']} · {p.get('location', '')}")
                     st.markdown(
                         f"<span style='color: var(--ink-soft); font-style: italic;'>\u201c{comment}\u201d</span>",
                         unsafe_allow_html=True,

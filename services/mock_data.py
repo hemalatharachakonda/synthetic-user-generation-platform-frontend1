@@ -21,10 +21,17 @@ LAST_NAMES = ["Bowen", "Dennis", "Walter", "Curtis", "Garner", "Salinas",
               "Rossi", "Okafor", "Ivanov", "Silva", "Khan", "Muller"]
 
 
+LOCATIONS = ["Chennai", "Bengaluru", "Mumbai", "Hyderabad", "Pune", "Delhi",
+             "San Francisco", "New York", "Austin", "Seattle", "Chicago",
+             "Toronto", "Vancouver", "London", "Manchester", "Berlin",
+             "Amsterdam", "Singapore", "Dubai", "Sydney", "Melbourne",
+             "Lagos", "Nairobi", "São Paulo", "Mexico City"]
+
+
 def random_roster(count: int) -> list[dict]:
     """Generates the local, deterministic part of a persona: name, occupation,
-    avatar seed. Age, personality/adoption/bio/quote get filled in separately
-    (by Groq when available, via fill_traits_locally otherwise)."""
+    location, avatar seed. Age, personality/adoption/bio/quote get filled in
+    separately (by Groq when available, via fill_traits_locally otherwise)."""
     roster = []
     for _ in range(count):
         first = random.choice(FIRST_NAMES)
@@ -33,6 +40,7 @@ def random_roster(count: int) -> list[dict]:
             "id": f"p_{uuid.uuid4().hex[:8]}",
             "name": f"{first} {last}",
             "occupation": random.choice(OCCUPATIONS_POOL),
+            "location": random.choice(LOCATIONS),
             "avatar_seed": _random_avatar_seed(),
         })
     return roster
@@ -46,8 +54,9 @@ def fill_traits_locally(roster: list[dict], target_audience: str) -> list[dict]:
         p["tags"] = random.sample(PERSONALITY_TAG_POOL, k=3)
         p["adoption_score"] = round(random.uniform(3.0, 9.5), 1)
         p["bio"] = (
-            f"{p['name']} is a {p['age']}-year-old {p['occupation'].lower()} who fits "
-            f"the target profile: {target_audience.strip()[:120]}."
+            f"{p['name']} is a {p['age']}-year-old {p['occupation'].lower()} based in "
+            f"{p.get('location', 'their city')} who fits the target profile: "
+            f"{target_audience.strip()[:120]}."
         )
         p["quote"] = ""
     return roster

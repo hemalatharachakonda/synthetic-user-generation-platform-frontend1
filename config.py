@@ -1,13 +1,11 @@
 """
 Central configuration for the Synthetic User Generation Platform frontend.
 
-This app runs entirely without a backend server. Experiments and Personas are
-generated locally: names/ages/occupations come from local mock pools, while
-personality traits, adoption scores, bios, and quotes are generated live by
-Groq (when GROQ_API_KEY is set). Survey, Interview, and Insights work the
-same way. Set GROQ_API_KEY below (or as a Streamlit secret) to enable real
-AI-generated responses everywhere; without it, everything falls back to
-local sample data automatically, so the app always works either way.
+If BACKEND_BASE_URL is set, Experiments/Personas/Survey/Interview/Insights
+persist to the real backend (database-backed, resumable across sessions,
+with server-side persona memory). If it's unset, or any backend call fails,
+everything falls back automatically to Groq direct + local sample data (the
+previous fully-local behavior), so the app always works either way.
 """
 
 import os
@@ -35,7 +33,13 @@ def _get_setting(key: str, default: str = "") -> str:
 
 GROQ_TIMEOUT_SECONDS = 30
 
-# ── Groq — powers Persona/Survey/Interview/Insights generation ─────────────
+# ── Backend — optional. When set, enables persistence + real cross-session
+# persona memory. Leave blank to run fully local (Groq direct + mock data). ──
+BACKEND_BASE_URL = _get_setting("BACKEND_BASE_URL", "").rstrip("/")
+BACKEND_TIMEOUT_SECONDS = 30
+
+# ── Groq — powers Persona/Survey/Interview/Insights generation when no
+# backend is configured (or as a fallback if a backend call fails) ─────────
 GROQ_API_KEY = _get_setting("GROQ_API_KEY", "")
 GROQ_MODEL = _get_setting("GROQ_MODEL", "openai/gpt-oss-120b")
 

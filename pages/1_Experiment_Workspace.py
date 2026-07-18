@@ -57,9 +57,10 @@ if submitted:
             st.session_state.experiment = experiment
 
         with st.spinner(f"Generating {persona_count} personas..."):
-            personas = generate_personas(product_name, description, target_audience, objectives, persona_count)
+            personas = generate_personas(st.session_state.experiment, product_name, description, target_audience, objectives, persona_count)
             st.session_state.personas = personas
-            st.session_state.experiment["status"] = "personas_generated"
+            if not st.session_state.experiment.get("_backend"):
+                st.session_state.experiment["status"] = "personas_generated"
 
         st.success(f"Generated {len(personas)} personas!")
         st.switch_page("pages/2_Persona_Gallery.py")

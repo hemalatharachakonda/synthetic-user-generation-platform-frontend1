@@ -20,7 +20,7 @@ def persona_card(persona: dict, on_interview=None, on_details=None):
                 f"""
                 <div class="specimen-id">{specimen_id}</div>
                 <div class="specimen-name">{persona['name']}</div>
-                <div class="specimen-meta">{persona['age']} · {persona['occupation']}</div>
+                <div class="specimen-meta">{persona['age']} · {persona['occupation']} · {persona.get('location', '')}</div>
                 """,
                 unsafe_allow_html=True,
             )

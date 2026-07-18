@@ -1,5 +1,7 @@
 import streamlit as st
+from config import BACKEND_BASE_URL
 from utils.state_manager import init_session_state, has_personas, get_persona_by_id
+from services.api_client import get_interview_history
 from components.chat_interface import chat_interface
 from styles.theme import load_css, score_tier
 
@@ -32,16 +34,25 @@ selected_id = st.selectbox(
 )
 st.session_state.current_interview = selected_id
 persona = get_persona_by_id(selected_id)
+
+experiment = st.session_state.get("experiment") or {}
+hydrated = st.session_state.setdefault("interview_history_hydrated", set())
+if (BACKEND_BASE_URL and experiment.get("_backend") and experiment.get("id")
+        and selected_id not in hydrated and not st.session_state.chat_history.get(selected_id)):
+    prior_messages = get_interview_history(experiment["id"], selected_id)
+    if prior_messages:
+        st.session_state.chat_history[selected_id] = prior_messages
+    hydrated.add(selected_id)
+
 tier = score_tier(persona["adoption_score"])
 tier_class = {"high": "score-high", "mid": "score-mid", "low": "score-low"}[tier]
 
 st.subheader(f"Interview: {persona['name']}")
 st.markdown(
-    f"""
-    <div class="specimen-meta">{persona['age']}, {persona['occupation']}
-    &nbsp;·&nbsp; <span class="score-badge {tier_class}">{persona['adoption_score']}/10</span></div>
-    <div class="specimen-meta">{', '.join(persona.get('tags', []))}</div>
-    """,
+    f'<div class="specimen-meta">{persona["age"]}, {persona["occupation"]} · '
+    f'{persona.get("location", "")}'
+    f'&nbsp;·&nbsp; <span class="score-badge {tier_class}">{persona["adoption_score"]}/10</span></div>'
+    f'<div class="specimen-meta">{", ".join(persona.get("tags", []))}</div>',
     unsafe_allow_html=True,
 )
 

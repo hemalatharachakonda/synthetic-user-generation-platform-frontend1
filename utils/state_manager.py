@@ -18,6 +18,8 @@ def init_session_state():
         "personas": [],                # list of persona dicts
         "current_interview": None,     # persona id currently being interviewed
         "chat_history": {},            # {persona_id: [ {role, content}, ... ]}
+        "interview_session_ids": {},   # {persona_id: backend interview session id}
+        "interview_history_hydrated": set(),  # persona ids already loaded from backend this session
 
         "current_question_index": 0,
         "survey_questions": [],        # list of question strings
@@ -44,6 +46,8 @@ def reset_experiment_state():
     st.session_state.personas = []
     st.session_state.current_interview = None
     st.session_state.chat_history = {}
+    st.session_state.interview_session_ids = {}
+    st.session_state.interview_history_hydrated = set()
     st.session_state.current_question_index = 0
     st.session_state.survey_questions = []
     st.session_state.survey_responses = {}
