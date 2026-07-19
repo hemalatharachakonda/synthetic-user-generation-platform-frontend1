@@ -125,6 +125,9 @@ def _backend_delete(path: str) -> bool:
 
 def delete_experiment(experiment_id: str) -> bool:
     return _backend_delete(f"/experiments/{experiment_id}")
+
+
+def list_recent_experiments() -> list[dict]:
     """Pulls the recent-experiments list (with status: draft/personas_ready/
     running/completed) from the backend dashboard overview. Returns an empty
     list if no backend is configured or it's unreachable — callers should
