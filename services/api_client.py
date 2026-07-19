@@ -108,7 +108,23 @@ def create_experiment(product_name, description, target_audience, objectives, pe
     }
 
 
-def list_recent_experiments() -> list[dict]:
+def _backend_delete(path: str) -> bool:
+    """DELETE against the real backend. Returns True/False rather than JSON,
+    since a successful delete returns 204 No Content (no body to parse)."""
+    if not BACKEND_BASE_URL:
+        return False
+    try:
+        resp = requests.delete(f"{BACKEND_BASE_URL}/api/v1{path}", timeout=BACKEND_TIMEOUT_SECONDS)
+        resp.raise_for_status()
+        _record_backend_result(True, path)
+        return True
+    except requests.RequestException as e:
+        _record_backend_result(False, path, str(e))
+        return False
+
+
+def delete_experiment(experiment_id: str) -> bool:
+    return _backend_delete(f"/experiments/{experiment_id}")
     """Pulls the recent-experiments list (with status: draft/personas_ready/
     running/completed) from the backend dashboard overview. Returns an empty
     list if no backend is configured or it's unreachable — callers should
@@ -562,6 +578,9 @@ def get_all_interview_transcripts(experiment_id: str) -> dict:
         ]
         for session in listing["items"]
     }
+
+
+def get_interview_history(experiment_id: str, persona_id: str) -> list[dict]:
     """Fetches this persona's persisted conversation so far, to hydrate
     chat_history when (re)opening Interview Mode — including after a
     browser refresh or a brand new session, since it's backend-stored, not
@@ -711,10 +730,12 @@ def _extract_suggestions_via_groq(personas: list[dict], survey_responses: dict, 
 
 def extract_insights(personas: list[dict], survey_responses: dict, chat_history: dict) -> dict:
     experiment = st.session_state.get("experiment") or {}
+    insights = None
+
     if experiment.get("_backend") and experiment.get("id"):
         backend = _backend_post(f"/insights/generate/{experiment['id']}")
         if backend:
-            return {
+            insights = {
                 "would_use_pct": backend.get("would_use_pct", 0),
                 "would_pay_pct": backend.get("would_pay_pct", 0),
                 "themes": backend.get("themes", []),
@@ -729,9 +750,15 @@ def extract_insights(personas: list[dict], survey_responses: dict, chat_history:
     # with a real Groq-grounded analysis on top when a key is configured —
     # grounded in the actual product + personas even before any survey/
     # interview exists.
-    insights = mock_data.extract_insights(personas, survey_responses, chat_history)
+    if insights is None:
+        insights = mock_data.extract_insights(personas, survey_responses, chat_history)
 
-    if GROQ_API_KEY and personas:
+    # If the backend came back thin (e.g. not enough survey/interview volume
+    # yet for it to cluster themes), layer a Groq-grounded pass on top rather
+    # than showing an empty dashboard — the underlying survey/interview data
+    # already exists in this session either way.
+    is_thin = not insights.get("themes") and not insights.get("suggestions") and not insights.get("key_quotes")
+    if is_thin and GROQ_API_KEY and personas:
         grounded = _extract_suggestions_via_groq(personas, survey_responses, chat_history)
         if grounded:
             if grounded.get("themes"):
@@ -740,10 +767,10 @@ def extract_insights(personas: list[dict], survey_responses: dict, chat_history:
                 insights["sentiment"] = grounded["sentiment"]
             if grounded.get("key_quotes"):
                 insights["key_quotes"] = grounded["key_quotes"]
-            insights["user_wants_summary"] = grounded.get(
-                "user_wants_summary", insights.get("user_wants_summary", "")
-            )
-            insights["suggestions"] = grounded.get("suggestions", insights.get("suggestions", []))
+            if grounded.get("user_wants_summary"):
+                insights["user_wants_summary"] = grounded["user_wants_summary"]
+            if grounded.get("suggestions"):
+                insights["suggestions"] = grounded["suggestions"]
 
     insights.setdefault("suggestions", [])
     insights.setdefault("user_wants_summary", "")

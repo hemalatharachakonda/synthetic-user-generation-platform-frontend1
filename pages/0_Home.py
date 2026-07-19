@@ -1,7 +1,7 @@
 import streamlit as st
 from config import APP_NAME, APP_ICON, APP_TAGLINE, GROQ_API_KEY, BACKEND_BASE_URL
 from utils.state_manager import init_session_state, has_experiment, reset_experiment_state
-from services.api_client import list_recent_experiments, get_experiment, get_personas_for_experiment
+from services.api_client import list_recent_experiments, get_experiment, get_personas_for_experiment, delete_experiment
 from styles.theme import load_css
 
 st.set_page_config(page_title="Home", page_icon=APP_ICON, layout="wide")
@@ -69,7 +69,7 @@ if backend_recent:
     dismissed = st.session_state.get("dismissed_experiment_ids", set())
     for exp in [e for e in backend_recent if e.get("id") not in dismissed]:
         with st.container(border=True):
-            cols = st.columns([3, 1, 1])
+            cols = st.columns([3, 1, 1, 1])
             cols[0].markdown(f"**{exp.get('title', 'Untitled experiment')}**")
             label, tier_class = STATUS_LABELS.get(exp.get("status"), ("Unknown", "score-mid"))
             cols[1].markdown(f'<span class="score-badge {tier_class}">{label.upper()}</span>', unsafe_allow_html=True)
@@ -88,6 +88,22 @@ if backend_recent:
                         st.switch_page("pages/1_Experiment_Workspace.py")
                 else:
                     st.error("Couldn't load that experiment — it may have been deleted.")
+
+            confirm_key = f"confirm_delete_{exp['id']}"
+            if cols[3].button("Delete", key=f"delete_{exp['id']}", width='stretch'):
+                st.session_state[confirm_key] = True
+            if st.session_state.get(confirm_key):
+                st.warning(f"Permanently delete **{exp.get('title', 'this experiment')}** and all its personas/surveys/interviews?")
+                cc1, cc2 = st.columns(2)
+                if cc1.button("Yes, delete it", key=f"confirm_yes_{exp['id']}", type="primary"):
+                    if delete_experiment(exp["id"]):
+                        st.session_state.pop(confirm_key, None)
+                        st.rerun()
+                    else:
+                        st.error("Couldn't delete — backend unreachable. Try again in a moment.")
+                if cc2.button("Cancel", key=f"confirm_no_{exp['id']}"):
+                    st.session_state.pop(confirm_key, None)
+                    st.rerun()
 else:
     # No backend configured (or nothing reachable) — fall back to the
     # session-local history of completed runs, as before.

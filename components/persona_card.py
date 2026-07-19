@@ -17,13 +17,10 @@ def persona_card(persona: dict, on_interview=None, on_details=None):
             st.image(avatar_url, width=64)
         with col2:
             st.markdown(
-                f'<div style="background: var(--surface); border-radius: 10px; '
-                f'padding: 0.35rem 0.6rem;">'
-                f'<div class="specimen-id" style="color: var(--ink-soft);">{specimen_id}</div>'
-                f'<div class="specimen-name" style="color: var(--ink);">{persona["name"]}</div>'
-                f'<div class="specimen-meta" style="color: var(--ink-soft);">'
-                f'{persona["age"]} · {persona["occupation"]} · {persona.get("location", "")}</div>'
-                f'</div>',
+                f'<div class="specimen-id" style="color: var(--ink-on-dark-soft);">{specimen_id}</div>'
+                f'<div class="specimen-name" style="color: var(--ink-on-dark);">{persona["name"]}</div>'
+                f'<div class="specimen-meta" style="color: var(--ink-on-dark-soft);">'
+                f'{persona["age"]} · {persona["occupation"]} · {persona.get("location", "")}</div>',
                 unsafe_allow_html=True,
             )
 
