@@ -722,12 +722,30 @@ def _extract_suggestions_via_groq(personas: list[dict], survey_responses: dict, 
         cleaned = cleaned.strip("`")
         if cleaned.lower().startswith("json"):
             cleaned = cleaned.split("\n", 1)[-1]
-    try:
-        data = json.loads(cleaned)
-        if isinstance(data, dict) and isinstance(data.get("suggestions"), list):
-            return data
-    except (json.JSONDecodeError, TypeError):
-        pass
+
+    def _try_parse(text: str):
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict) and isinstance(data.get("suggestions"), list):
+                return data
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return None
+
+    result = _try_parse(cleaned)
+    if result:
+        return result
+
+    # Fallback: the model may have added stray prose around the JSON despite
+    # instructions — try extracting just the {...} substring instead of
+    # giving up entirely.
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        result = _try_parse(cleaned[start:end + 1])
+        if result:
+            return result
+
+    st.warning("Groq returned insights in an unexpected format — showing baseline data instead. Try Recalculate Insights again.")
     return None
 
 
