@@ -105,8 +105,14 @@ with tab_interviews:
     transcripts = {}
     if experiment.get("_backend") and experiment.get("id"):
         transcripts = get_all_interview_transcripts(experiment["id"])
-    if not transcripts:
-        transcripts = {pid: turns for pid, turns in st.session_state.chat_history.items() if turns}
+    # Merge in any local-only conversations the backend doesn't know about yet
+    # (e.g. this persona's backend session failed and it fell back to Groq
+    # direct) — previously this only ran if the backend returned NOTHING at
+    # all, so a persona interviewed locally could stay invisible here even
+    # though other personas' backend sessions existed.
+    for pid, turns in st.session_state.chat_history.items():
+        if turns and pid not in transcripts:
+            transcripts[pid] = turns
 
     if not transcripts:
         st.info("No interviews conducted yet.")

@@ -31,7 +31,7 @@ def _record_backend_result(ok: bool, path: str, detail: str = ""):
     st.session_state["_backend_last_error"] = "" if ok else f"{path} — {detail}"
 
 
-def _backend_get(path: str, params: dict = None):
+def _backend_get(path: str, params: dict = None, _retrying: bool = False):
     """GET against the real backend. Returns parsed JSON, or None on any
     failure (backend not configured, unreachable, non-2xx, bad JSON) so
     every caller can fall back to Groq/local cleanly, the same pattern
@@ -43,12 +43,20 @@ def _backend_get(path: str, params: dict = None):
         resp.raise_for_status()
         _record_backend_result(True, path)
         return resp.json()
+    except requests.exceptions.Timeout:
+        if not _retrying:
+            # Likely a free-tier cold start (e.g. Render) — the first request
+            # wakes the server but times out; retry once now that it's warm.
+            st.toast("Backend is waking up, retrying...", icon="⏳")
+            return _backend_get(path, params, _retrying=True)
+        _record_backend_result(False, path, "timed out twice — backend may be sleeping")
+        return None
     except (requests.RequestException, ValueError) as e:
         _record_backend_result(False, path, str(e))
         return None
 
 
-def _backend_post(path: str, json_body: dict = None):
+def _backend_post(path: str, json_body: dict = None, _retrying: bool = False):
     """POST against the real backend. Same fallback contract as _backend_get."""
     if not BACKEND_BASE_URL:
         return None
@@ -57,12 +65,18 @@ def _backend_post(path: str, json_body: dict = None):
         resp.raise_for_status()
         _record_backend_result(True, path)
         return resp.json()
+    except requests.exceptions.Timeout:
+        if not _retrying:
+            st.toast("Backend is waking up, retrying...", icon="⏳")
+            return _backend_post(path, json_body, _retrying=True)
+        _record_backend_result(False, path, "timed out twice — backend may be sleeping")
+        return None
     except (requests.RequestException, ValueError) as e:
         _record_backend_result(False, path, str(e))
         return None
 
 
-def _backend_put(path: str, json_body: dict = None):
+def _backend_put(path: str, json_body: dict = None, _retrying: bool = False):
     if not BACKEND_BASE_URL:
         return None
     try:
@@ -70,6 +84,12 @@ def _backend_put(path: str, json_body: dict = None):
         resp.raise_for_status()
         _record_backend_result(True, path)
         return resp.json()
+    except requests.exceptions.Timeout:
+        if not _retrying:
+            st.toast("Backend is waking up, retrying...", icon="⏳")
+            return _backend_put(path, json_body, _retrying=True)
+        _record_backend_result(False, path, "timed out twice — backend may be sleeping")
+        return None
     except (requests.RequestException, ValueError) as e:
         _record_backend_result(False, path, str(e))
         return None
@@ -108,7 +128,7 @@ def create_experiment(product_name, description, target_audience, objectives, pe
     }
 
 
-def _backend_delete(path: str) -> bool:
+def _backend_delete(path: str, _retrying: bool = False) -> bool:
     """DELETE against the real backend. Returns True/False rather than JSON,
     since a successful delete returns 204 No Content (no body to parse)."""
     if not BACKEND_BASE_URL:
@@ -118,6 +138,12 @@ def _backend_delete(path: str) -> bool:
         resp.raise_for_status()
         _record_backend_result(True, path)
         return True
+    except requests.exceptions.Timeout:
+        if not _retrying:
+            st.toast("Backend is waking up, retrying...", icon="⏳")
+            return _backend_delete(path, _retrying=True)
+        _record_backend_result(False, path, "timed out twice — backend may be sleeping")
+        return False
     except requests.RequestException as e:
         _record_backend_result(False, path, str(e))
         return False
@@ -299,6 +325,23 @@ def generate_personas(experiment: dict, product_name, description, target_audien
 
 # ── Survey ────────────────────────────────────────────────────────────────────
 
+def _persona_interview_notes(persona_id: str) -> str:
+    """Summarizes this persona's prior Interview Mode answers (if any) so
+    their Survey Mode answers stay consistent instead of contradicting what
+    they already said when interviewed earlier — the mirror of
+    _persona_survey_context, which does the same thing in reverse."""
+    turns = st.session_state.get("chat_history", {}).get(persona_id) or []
+    pairs = []
+    pending_question = None
+    for turn in turns:
+        if turn.get("role") == "user":
+            pending_question = turn.get("content")
+        elif turn.get("role") == "assistant" and pending_question:
+            pairs.append(f'Asked "{pending_question}", answered: "{turn.get("content", "")}"')
+            pending_question = None
+    return " | ".join(pairs[-3:]) if pairs else ""
+
+
 def _run_survey_via_groq(personas: list[dict], question: str) -> dict | None:
     """Asks Groq to answer the actual survey question in-character for every
     persona in one batched call. Returns {persona_id: {score, comment}} or
@@ -314,6 +357,7 @@ def _run_survey_via_groq(personas: list[dict], question: str) -> dict | None:
             "traits": p.get("tags", []),
             "bio": p.get("bio", ""),
             "baseline_adoption_score": p.get("adoption_score"),
+            "prior_interview_notes": _persona_interview_notes(p["id"]),
         }
         for p in personas
     ]
@@ -330,7 +374,9 @@ def _run_survey_via_groq(personas: list[dict], question: str) -> dict | None:
         "question itself points that way (e.g. a price-focused question can score "
         "lower even for an otherwise enthusiastic persona). Just keep the reasoning "
         "believable for who they are — don't flip a skeptic into a superfan for no "
-        "reason. Respond with ONLY a JSON array — no "
+        "reason. If a persona has prior_interview_notes, stay consistent with what "
+        "they already said in that earlier conversation — do not contradict it. "
+        "Respond with ONLY a JSON array — no "
         "markdown, no code fences, no commentary — in exactly this shape, one "
         "entry per persona id given, same order:\n"
         '[{"persona_id": "...", "score": 1-10 (how positively they answer / '
@@ -615,13 +661,23 @@ def _get_persona_response_via_backend(experiment_id: str, persona: dict, message
     return None
 
 
+def _last_assistant_reply(history: list[dict]) -> str | None:
+    for turn in reversed(history[:-1]):  # skip the just-appended user message
+        if turn.get("role") == "assistant":
+            return turn.get("content")
+    return None
+
+
 def get_persona_response(persona: dict, message: str, history: list[dict]) -> str:
     experiment = st.session_state.get("experiment") or {}
     if experiment.get("_backend") and experiment.get("id"):
         reply = _get_persona_response_via_backend(experiment["id"], persona, message)
-        if reply:
+        # Guard against a server-side session/caching bug that can return the
+        # same reply verbatim for a genuinely different question — treat a
+        # stale repeat as a failure rather than showing it to the user.
+        if reply and reply != _last_assistant_reply(history):
             return reply
-        # falls through to Groq/local below on any backend failure
+        # falls through to Groq/local below on any backend failure or repeat
 
     if GROQ_API_KEY:
         messages = [{"role": "system", "content": _persona_system_prompt(persona)}]
