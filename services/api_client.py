@@ -1,11 +1,20 @@
 """
-API client. When BACKEND_BASE_URL is configured, Experiments/Personas/Survey/
-Interview/Insights persist to the real backend (database-backed, resumable,
-with server-side persona memory across Survey and Interview). Every backend
-call falls back automatically to Groq-direct + local mock data on any
-failure (unset URL, network error, unexpected response), so the app always
-works either way. Every page/component calls functions from here, so no
-other file needs to change if this logic changes later.
+API client — fully local, no backend server. Experiments/Personas/Survey/
+Interview/Insights all run on Groq directly (when GROQ_API_KEY is set),
+with automatic fallback to local mock data on any failure, so the app
+always works either way. Every page/component calls functions from here,
+so no other file needs to change if this logic changes later.
+
+Persona memory & consistency (no ML training involved — this is standard
+prompt/context engineering, the same technique used by essentially every
+production AI character/persona product):
+  - Each persona's fixed attributes (name, age, occupation, location, traits,
+    bio) are resent on every single call, so they never drift.
+  - Full conversation history is resent every turn within Interview Mode,
+    so a persona doesn't contradict what they said 2 questions ago.
+  - Interview Mode reads a persona's prior Survey Mode answers, and Survey
+    Mode reads a persona's prior Interview Mode answers — consistency flows
+    both ways, regardless of which mode was used first.
 """
 
 import json
@@ -13,110 +22,15 @@ import random
 import uuid
 import requests
 import streamlit as st
-from config import (
-    GROQ_TIMEOUT_SECONDS, GROQ_API_KEY, GROQ_MODEL,
-    BACKEND_BASE_URL, BACKEND_TIMEOUT_SECONDS,
-)
+from config import GROQ_TIMEOUT_SECONDS, GROQ_API_KEY, GROQ_MODEL
 from services import mock_data
-from services.data_processor import score_from_answer_text
 
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
-
-
-def _record_backend_result(ok: bool, path: str, detail: str = ""):
-    """Tracks whether the last backend call succeeded, so the UI can show a
-    clear connected/unreachable status instead of silently falling back
-    forever with no indication anything is wrong."""
-    st.session_state["_backend_status"] = "connected" if ok else "unreachable"
-    st.session_state["_backend_last_error"] = "" if ok else f"{path} — {detail}"
-
-
-def _backend_get(path: str, params: dict = None, _retrying: bool = False):
-    """GET against the real backend. Returns parsed JSON, or None on any
-    failure (backend not configured, unreachable, non-2xx, bad JSON) so
-    every caller can fall back to Groq/local cleanly, the same pattern
-    already used for _call_groq below."""
-    if not BACKEND_BASE_URL:
-        return None
-    try:
-        resp = requests.get(f"{BACKEND_BASE_URL}/api/v1{path}", params=params, timeout=BACKEND_TIMEOUT_SECONDS)
-        resp.raise_for_status()
-        _record_backend_result(True, path)
-        return resp.json()
-    except requests.exceptions.Timeout:
-        if not _retrying:
-            # Likely a free-tier cold start (e.g. Render) — the first request
-            # wakes the server but times out; retry once now that it's warm.
-            st.toast("Backend is waking up, retrying...", icon="⏳")
-            return _backend_get(path, params, _retrying=True)
-        _record_backend_result(False, path, "timed out twice — backend may be sleeping")
-        return None
-    except (requests.RequestException, ValueError) as e:
-        _record_backend_result(False, path, str(e))
-        return None
-
-
-def _backend_post(path: str, json_body: dict = None, _retrying: bool = False):
-    """POST against the real backend. Same fallback contract as _backend_get."""
-    if not BACKEND_BASE_URL:
-        return None
-    try:
-        resp = requests.post(f"{BACKEND_BASE_URL}/api/v1{path}", json=json_body, timeout=BACKEND_TIMEOUT_SECONDS)
-        resp.raise_for_status()
-        _record_backend_result(True, path)
-        return resp.json()
-    except requests.exceptions.Timeout:
-        if not _retrying:
-            st.toast("Backend is waking up, retrying...", icon="⏳")
-            return _backend_post(path, json_body, _retrying=True)
-        _record_backend_result(False, path, "timed out twice — backend may be sleeping")
-        return None
-    except (requests.RequestException, ValueError) as e:
-        _record_backend_result(False, path, str(e))
-        return None
-
-
-def _backend_put(path: str, json_body: dict = None, _retrying: bool = False):
-    if not BACKEND_BASE_URL:
-        return None
-    try:
-        resp = requests.put(f"{BACKEND_BASE_URL}/api/v1{path}", json=json_body, timeout=BACKEND_TIMEOUT_SECONDS)
-        resp.raise_for_status()
-        _record_backend_result(True, path)
-        return resp.json()
-    except requests.exceptions.Timeout:
-        if not _retrying:
-            st.toast("Backend is waking up, retrying...", icon="⏳")
-            return _backend_put(path, json_body, _retrying=True)
-        _record_backend_result(False, path, "timed out twice — backend may be sleeping")
-        return None
-    except (requests.RequestException, ValueError) as e:
-        _record_backend_result(False, path, str(e))
-        return None
 
 
 # ── Experiments ───────────────────────────────────────────────────────────────
 
 def create_experiment(product_name, description, target_audience, objectives, persona_count=6) -> dict:
-    backend = _backend_post("/experiments", {
-        "title": product_name,
-        "product_description": description,
-        "target_audience": target_audience,
-        "research_objectives": objectives,
-        "persona_count": persona_count,
-    })
-    if backend and backend.get("id"):
-        return {
-            "id": backend["id"],
-            "product_name": backend.get("title", product_name),
-            "description": backend.get("product_description", description),
-            "target_audience": backend.get("target_audience", target_audience),
-            "objectives": backend.get("research_objectives", objectives),
-            "status": backend.get("status", "draft"),
-            "_backend": True,
-        }
-
-    # Backend unset or unreachable — fully local, same as before.
     return {
         "id": f"exp_{uuid.uuid4().hex[:8]}",
         "product_name": product_name,
@@ -124,86 +38,6 @@ def create_experiment(product_name, description, target_audience, objectives, pe
         "target_audience": target_audience,
         "objectives": objectives,
         "status": "draft",
-        "_backend": False,
-    }
-
-
-def _backend_delete(path: str, _retrying: bool = False) -> bool:
-    """DELETE against the real backend. Returns True/False rather than JSON,
-    since a successful delete returns 204 No Content (no body to parse)."""
-    if not BACKEND_BASE_URL:
-        return False
-    try:
-        resp = requests.delete(f"{BACKEND_BASE_URL}/api/v1{path}", timeout=BACKEND_TIMEOUT_SECONDS)
-        resp.raise_for_status()
-        _record_backend_result(True, path)
-        return True
-    except requests.exceptions.Timeout:
-        if not _retrying:
-            st.toast("Backend is waking up, retrying...", icon="⏳")
-            return _backend_delete(path, _retrying=True)
-        _record_backend_result(False, path, "timed out twice — backend may be sleeping")
-        return False
-    except requests.RequestException as e:
-        _record_backend_result(False, path, str(e))
-        return False
-
-
-def delete_experiment(experiment_id: str) -> bool:
-    return _backend_delete(f"/experiments/{experiment_id}")
-
-
-def list_recent_experiments() -> list[dict]:
-    """Pulls the recent-experiments list (with status: draft/personas_ready/
-    running/completed) from the backend dashboard overview. Returns an empty
-    list if no backend is configured or it's unreachable — callers should
-    fall back to session-local history (experiments_history) in that case."""
-    data = _backend_get("/dashboard/overview")
-    if not data:
-        return []
-    return data.get("recent_experiments", [])
-
-
-def get_experiment(experiment_id: str) -> dict | None:
-    """Fetches full experiment details for resuming a previous session."""
-    backend = _backend_get(f"/experiments/{experiment_id}")
-    if not backend:
-        return None
-    return {
-        "id": backend["id"],
-        "product_name": backend.get("title", ""),
-        "description": backend.get("product_description", ""),
-        "target_audience": backend.get("target_audience", ""),
-        "objectives": backend.get("research_objectives", ""),
-        "status": backend.get("status", "draft"),
-        "_backend": True,
-    }
-
-
-def get_personas_for_experiment(experiment_id: str) -> list[dict]:
-    """Fetches previously-generated personas for an experiment being
-    resumed. Returns an empty list on any failure."""
-    backend = _backend_get(f"/personas/experiment/{experiment_id}")
-    if not backend:
-        return []
-    return [_map_backend_persona(p) for p in backend.get("items", [])]
-
-
-def _map_backend_persona(p: dict) -> dict:
-    """Maps a backend PersonaResponse into the shape the frontend already
-    uses everywhere (id/name/age/occupation/location/tags/adoption_score/
-    bio/quote/avatar_seed)."""
-    return {
-        "id": p["id"],
-        "name": p["name"],
-        "age": p.get("age"),
-        "occupation": p.get("occupation", ""),
-        "location": p.get("location", ""),
-        "tags": p.get("tags") or p.get("personality_traits", [])[:4],
-        "adoption_score": p.get("adoption_score", 5.0),
-        "bio": p.get("bio", ""),
-        "quote": p.get("quote") or "",
-        "avatar_seed": p.get("avatar_seed", p["id"]),
     }
 
 
@@ -211,10 +45,10 @@ def _map_backend_persona(p: dict) -> dict:
 
 def _enrich_personas_via_groq(roster: list[dict], product_name: str, description: str,
                                target_audience: str, objectives: str):
-    """Given a roster with only name/age/occupation/avatar_seed filled in
+    """Given a roster with only name/occupation/location/avatar_seed filled in
     (from local mock pools), asks Groq to generate everything that actually
-    requires judgment: personality traits, an adoption score, a bio, and a
-    representative quote — grounded in the real product and each specific
+    requires judgment: age, personality traits, an adoption score, a bio, and
+    a representative quote — grounded in the real product and each specific
     persona. Returns None on any failure so the caller can fall back locally."""
     slim_roster = [{"id": p["id"], "name": p["name"], "occupation": p["occupation"],
                      "location": p.get("location", "")}
@@ -302,16 +136,7 @@ def _enrich_personas_via_groq(roster: list[dict], product_name: str, description
 
 
 def generate_personas(experiment: dict, product_name, description, target_audience, objectives, count) -> list[dict]:
-    if experiment.get("_backend") and experiment.get("id"):
-        backend = _backend_post("/personas/generate", {
-            "experiment_id": experiment["id"],
-            "persona_count": count,
-        })
-        if backend and backend.get("items"):
-            return [_map_backend_persona(p) for p in backend["items"]]
-        # falls through to Groq/local below on any backend failure
-
-    # Names, ages, occupations always come from local mock pools.
+    # Names, occupations, locations always come from local mock pools.
     roster = mock_data.random_roster(count)
 
     if GROQ_API_KEY:
@@ -426,54 +251,7 @@ def _run_survey_via_groq(personas: list[dict], question: str) -> dict | None:
         return None
 
 
-def _run_survey_via_backend(experiment_id: str, question: str) -> dict | None:
-    """Creates a one-question survey and executes it immediately, so Survey
-    Mode can keep asking one question at a time against a backend built for
-    batched multi-question surveys. Returns {persona_id: {score, comment}}
-    or None on any failure so the caller can fall back cleanly."""
-    created = _backend_post("/surveys", {
-        "experiment_id": experiment_id,
-        "title": question[:190] or "Survey question",
-        "questions": [question],
-    })
-    if not created or not created.get("id"):
-        return None
-
-    executed = _backend_post("/surveys/execute", {"survey_id": created["id"]})
-    if not executed or not executed.get("persona_responses"):
-        return None
-
-    results = {}
-    for pr in executed["persona_responses"]:
-        pid = pr.get("persona_id")
-        answers = pr.get("responses") or []
-        if not pid or not answers:
-            continue
-        answer_text = answers[0].get("answer", "")
-        rating = answers[0].get("rating")
-        if rating is None:
-            # backend didn't return a rating for this one (shouldn't normally
-            # happen now that his backend supports it) — fall back to the
-            # text heuristic rather than showing a blank score.
-            rating = score_from_answer_text(answer_text, answers[0].get("confidence", 0.7))
-        results[pid] = {
-            "score": rating,
-            "comment": answer_text,
-        }
-    return results or None
-
-
 def run_survey_question(personas: list[dict], question: str) -> dict:
-    experiment = st.session_state.get("experiment") or {}
-    if experiment.get("_backend") and experiment.get("id"):
-        backend_results = _run_survey_via_backend(experiment["id"], question)
-        if backend_results:
-            missing = [p for p in personas if p["id"] not in backend_results]
-            if missing:
-                backend_results.update(mock_data.run_survey_question(missing, question))
-            return backend_results
-        # falls through to Groq/local below on any backend failure
-
     if GROQ_API_KEY:
         grounded = _run_survey_via_groq(personas, question)
         if grounded:
@@ -566,119 +344,8 @@ def _persona_system_prompt(persona: dict) -> str:
     )
 
 
-def _get_or_create_interview_session(experiment_id: str, persona_id: str) -> str | None:
-    """Finds this persona's existing interview session (so returning to the
-    same persona resumes the same conversation instead of starting fresh),
-    creating one if none exists yet. Caches the session id in session_state
-    to avoid re-querying on every message. Returns None on any failure."""
-    cache = st.session_state.setdefault("interview_session_ids", {})
-    if persona_id in cache:
-        return cache[persona_id]
-
-    existing = _backend_get("/interviews", params={"experiment_id": experiment_id, "persona_id": persona_id})
-    if existing and existing.get("items"):
-        session_id = existing["items"][0]["id"]
-        cache[persona_id] = session_id
-        return session_id
-
-    created = _backend_post("/interviews", {"experiment_id": experiment_id, "persona_id": persona_id})
-    if created and created.get("id"):
-        cache[persona_id] = created["id"]
-        return created["id"]
-    return None
-
-
-def get_survey_history(experiment_id: str) -> list[dict]:
-    """Fetches every survey question ever asked in this experiment, with
-    every persona's answer, for the full dashboard view. Returns a flat
-    list of {question, persona_id, persona_name, answer, rating} rows.
-    Returns [] on any failure or if no surveys exist yet."""
-    listing = _backend_get(f"/surveys/experiment/{experiment_id}")
-    if not listing or not listing.get("items"):
-        return []
-
-    rows = []
-    for survey in listing["items"]:
-        detail = _backend_get(f"/surveys/{survey['id']}/responses")
-        if not detail:
-            continue
-        for pr in detail.get("persona_responses", []):
-            for resp in pr.get("responses", []):
-                rows.append({
-                    "question": resp.get("question", survey.get("title", "")),
-                    "persona_id": pr.get("persona_id"),
-                    "persona_name": pr.get("persona_name", "Unknown"),
-                    "answer": resp.get("answer", ""),
-                    "rating": resp.get("rating"),
-                })
-    return rows
-
-
-def get_all_interview_transcripts(experiment_id: str) -> dict:
-    """Fetches every interview session for this experiment, for the full
-    dashboard view. Returns {persona_id: [{role, content}, ...]}. Returns
-    {} on any failure or if no interviews exist yet."""
-    listing = _backend_get("/interviews", params={"experiment_id": experiment_id})
-    if not listing or not listing.get("items"):
-        return {}
-    return {
-        session["persona_id"]: [
-            {"role": m.get("role"), "content": m.get("content")} for m in session.get("messages", [])
-        ]
-        for session in listing["items"]
-    }
-
-
-def get_interview_history(experiment_id: str, persona_id: str) -> list[dict]:
-    """Fetches this persona's persisted conversation so far, to hydrate
-    chat_history when (re)opening Interview Mode — including after a
-    browser refresh or a brand new session, since it's backend-stored, not
-    just kept in st.session_state. Returns [] on any failure (no backend,
-    unreachable, or no session exists yet — a fresh conversation)."""
-    session_id = _get_or_create_interview_session(experiment_id, persona_id)
-    if not session_id:
-        return []
-    session = _backend_get(f"/interviews/{session_id}")
-    if not session:
-        return []
-    return [{"role": m.get("role"), "content": m.get("content")} for m in session.get("messages", [])]
-
-
-def _get_persona_response_via_backend(experiment_id: str, persona: dict, message: str) -> str | None:
-    session_id = _get_or_create_interview_session(experiment_id, persona["id"])
-    if not session_id:
-        return None
-    result = _backend_post(f"/interviews/{session_id}/message", {
-        "persona_id": persona["id"],
-        "message": message,
-    })
-    if not result or not result.get("messages"):
-        return None
-    # Last message should be the assistant's reply just generated.
-    for msg in reversed(result["messages"]):
-        if msg.get("role") == "assistant":
-            return msg.get("content")
-    return None
-
-
-def _last_assistant_reply(history: list[dict]) -> str | None:
-    for turn in reversed(history[:-1]):  # skip the just-appended user message
-        if turn.get("role") == "assistant":
-            return turn.get("content")
-    return None
-
-
 def get_persona_response(persona: dict, message: str, history: list[dict]) -> str:
     experiment = st.session_state.get("experiment") or {}
-    if experiment.get("_backend") and experiment.get("id"):
-        reply = _get_persona_response_via_backend(experiment["id"], persona, message)
-        # Guard against a server-side session/caching bug that can return the
-        # same reply verbatim for a genuinely different question — treat a
-        # stale repeat as a failure rather than showing it to the user.
-        if reply and reply != _last_assistant_reply(history):
-            return reply
-        # falls through to Groq/local below on any backend failure or repeat
-
     if GROQ_API_KEY:
         messages = [{"role": "system", "content": _persona_system_prompt(persona)}]
         # history already includes the just-sent user message as its last entry
@@ -806,36 +473,12 @@ def _extract_suggestions_via_groq(personas: list[dict], survey_responses: dict, 
 
 
 def extract_insights(personas: list[dict], survey_responses: dict, chat_history: dict) -> dict:
-    experiment = st.session_state.get("experiment") or {}
-    insights = None
+    # Base chart data is always built locally, then layered with a real
+    # Groq-grounded analysis on top when a key is configured — grounded in
+    # the actual product + personas even before any survey/interview exists.
+    insights = mock_data.extract_insights(personas, survey_responses, chat_history)
 
-    if experiment.get("_backend") and experiment.get("id"):
-        backend = _backend_post(f"/insights/generate/{experiment['id']}")
-        if backend:
-            insights = {
-                "would_use_pct": backend.get("would_use_pct", 0),
-                "would_pay_pct": backend.get("would_pay_pct", 0),
-                "themes": backend.get("themes", []),
-                "sentiment": backend.get("sentiment", {}),
-                "key_quotes": backend.get("key_quotes", []),
-                "suggestions": backend.get("suggestions", []),
-                "user_wants_summary": backend.get("user_wants_summary", ""),
-            }
-        # falls through to Groq/local below on any backend failure
-
-    # Local path — the base chart data is always built locally, then layered
-    # with a real Groq-grounded analysis on top when a key is configured —
-    # grounded in the actual product + personas even before any survey/
-    # interview exists.
-    if insights is None:
-        insights = mock_data.extract_insights(personas, survey_responses, chat_history)
-
-    # If the backend came back thin (e.g. not enough survey/interview volume
-    # yet for it to cluster themes), layer a Groq-grounded pass on top rather
-    # than showing an empty dashboard — the underlying survey/interview data
-    # already exists in this session either way.
-    is_thin = not insights.get("themes") and not insights.get("suggestions") and not insights.get("key_quotes")
-    if is_thin and GROQ_API_KEY and personas:
+    if GROQ_API_KEY and personas:
         grounded = _extract_suggestions_via_groq(personas, survey_responses, chat_history)
         if grounded:
             if grounded.get("themes"):
@@ -857,9 +500,6 @@ def extract_insights(personas: list[dict], survey_responses: dict, chat_history:
 # ── Reports ───────────────────────────────────────────────────────────────────
 
 def generate_report(experiment: dict, personas: list[dict], insights: dict) -> dict:
-    # Note: the real backend doesn't have a /reports/generate endpoint yet
-    # (Milestone 1 only covers Experiments + Personas), so this is always
-    # assembled locally.
     return {
         "experiment": experiment,
         "personas": personas,

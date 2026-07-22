@@ -3,7 +3,7 @@ from utils.state_manager import init_session_state, has_personas, get_persona_by
 from components.visualizations import adoption_chart, sentiment_donut, theme_bars
 from components.suggestions_panel import render_user_wants_summary, render_suggestions
 from components.persona_card import persona_card
-from services.api_client import extract_insights, get_survey_history, get_all_interview_transcripts
+from services.api_client import extract_insights
 from styles.theme import load_css
 
 st.set_page_config(page_title="Insights Dashboard", layout="wide")
@@ -67,18 +67,15 @@ with tab_personas:
 with tab_survey:
     st.markdown('<div class="section-label">Every Question Asked</div>', unsafe_allow_html=True)
     survey_rows = []
-    if experiment.get("_backend") and experiment.get("id"):
-        survey_rows = get_survey_history(experiment["id"])
-    if not survey_rows:
-        # Local/session-only fallback — build the same shape from session state.
-        for q_idx, q_text in enumerate(st.session_state.survey_questions):
-            for p in st.session_state.personas:
-                r = (st.session_state.survey_responses.get(q_idx) or {}).get(p["id"])
-                if r:
-                    survey_rows.append({
-                        "question": q_text, "persona_id": p["id"], "persona_name": p["name"],
-                        "answer": r.get("comment", ""), "rating": r.get("score"),
-                    })
+    # Local/session-only — build the same shape from session state.
+    for q_idx, q_text in enumerate(st.session_state.survey_questions):
+        for p in st.session_state.personas:
+            r = (st.session_state.survey_responses.get(q_idx) or {}).get(p["id"])
+            if r:
+                survey_rows.append({
+                    "question": q_text, "persona_id": p["id"], "persona_name": p["name"],
+                    "answer": r.get("comment", ""), "rating": r.get("score"),
+                })
 
     if not survey_rows:
         st.info("No survey questions asked yet.")
@@ -103,15 +100,8 @@ with tab_survey:
 with tab_interviews:
     st.markdown('<div class="section-label">Every Interview Transcript</div>', unsafe_allow_html=True)
     transcripts = {}
-    if experiment.get("_backend") and experiment.get("id"):
-        transcripts = get_all_interview_transcripts(experiment["id"])
-    # Merge in any local-only conversations the backend doesn't know about yet
-    # (e.g. this persona's backend session failed and it fell back to Groq
-    # direct) — previously this only ran if the backend returned NOTHING at
-    # all, so a persona interviewed locally could stay invisible here even
-    # though other personas' backend sessions existed.
     for pid, turns in st.session_state.chat_history.items():
-        if turns and pid not in transcripts:
+        if turns:
             transcripts[pid] = turns
 
     if not transcripts:
