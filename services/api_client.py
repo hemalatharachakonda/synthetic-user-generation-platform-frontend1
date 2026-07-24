@@ -234,7 +234,9 @@ def _run_survey_via_groq(personas: list[dict], question: str, question_idx: int 
         "prior_interview_notes or prior_survey_notes is non-empty, you MUST stay "
         "consistent with what they already said there — do not contradict it, and "
         "where relevant, build on it (e.g. repeat/refine a suggestion they already "
-        "raised rather than inventing an unrelated new one). "
+        "raised rather than inventing an unrelated new one). Every persona's "
+        "\"comment\" must be written in English, regardless of the persona's "
+        "location or background — this is an English-language research report. "
         "Respond with ONLY a JSON array — no "
         "markdown, no code fences, no commentary — in exactly this shape, one "
         "entry per persona id given, same order:\n"
@@ -343,7 +345,20 @@ def run_survey_question(personas: list[dict], question: str, question_idx: int |
 
 # ── Interview ─────────────────────────────────────────────────────────────────
 
-def _call_groq(messages: list[dict], max_tokens: int = 220) -> str:
+def _looks_incomplete(text: str) -> bool:
+    """Rough heuristic for a response that got cut off mid-thought (e.g. an API
+    hiccup or hitting max_tokens before finishing a sentence) — like literally
+    "I gave it a" and nothing else. Not perfect, but catches the obvious cases
+    so we can retry once instead of showing a broken half-sentence."""
+    t = (text or "").strip()
+    if len(t) < 15:
+        return True
+    if t[-1] not in ".!?\u2019\u201d\"'":
+        return True
+    return False
+
+
+def _call_groq(messages: list[dict], max_tokens: int = 220, _retry: bool = True) -> str:
     """Direct call to Groq's OpenAI-compatible chat completions endpoint.
 
     Used for interview responses so personas feel like a real (simulated)
@@ -363,7 +378,13 @@ def _call_groq(messages: list[dict], max_tokens: int = 220) -> str:
         resp = requests.post(GROQ_CHAT_URL, headers=headers, json=payload, timeout=GROQ_TIMEOUT_SECONDS)
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
+        reply = data["choices"][0]["message"]["content"].strip()
+        finish_reason = data["choices"][0].get("finish_reason")
+        # If the model got cut off before finishing a thought, retry once with
+        # more room instead of showing a half sentence like "I gave it a".
+        if _retry and (finish_reason == "length" or _looks_incomplete(reply)):
+            return _call_groq(messages, max_tokens=max_tokens + 200, _retry=False) or reply
+        return reply
     except requests.RequestException as e:
         st.error(f"Groq request failed: {e}")
         return ""
@@ -418,7 +439,10 @@ def _persona_system_prompt(persona: dict) -> str:
         "persona's life, priorities, and personality — not generic marketing-speak. "
         "Give honest, specific opinions: if skeptical, say so and why; if enthusiastic, "
         "say so and why. Directly address what was actually asked. Never break character "
-        "or mention that you are an AI."
+        "or mention that you are an AI. Always respond in English — regardless of your "
+        "persona's location or background, this research is being read by an English-"
+        "speaking product team, so answer in English even if you'd naturally code-switch "
+        "in real life."
         + _persona_survey_context(persona)
     )
 
