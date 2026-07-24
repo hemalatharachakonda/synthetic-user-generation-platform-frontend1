@@ -30,7 +30,11 @@ def report_preview(experiment: dict, personas: list[dict], insights: dict):
     would_use = insights.get("would_use_pct", 0)
     would_pay = insights.get("would_pay_pct", 0)
     avg_adoption = round(sum(p.get("adoption_score", 0) for p in personas) / len(personas), 1) if personas else 0
-    top_theme = insights.get("themes", [{}])[0].get("theme", "—") if insights.get("themes") else "—"
+    # "Top Theme" must be the theme with the highest mentions_pct — not just
+    # whichever one happens to come first in the list, since nothing guarantees
+    # Groq (or the mock fallback) returns themes pre-sorted by percentage.
+    themes = insights.get("themes") or []
+    top_theme = max(themes, key=lambda t: t.get("mentions_pct", 0)).get("theme", "—") if themes else "—"
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Would Use It", f"{would_use}%")
