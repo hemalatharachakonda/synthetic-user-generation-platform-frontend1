@@ -26,6 +26,37 @@ from styles.theme import SENTIMENT_COLORS, ACCENT, ACCENT_DARK, ACCENT_TINT_STRO
 
 CONTENT_WIDTH = 6.5 * inch  # letter page minus 0.75in margins... matches doc margins below
 
+# reportlab's built-in Helvetica font only supports the WinAnsi character set —
+# it silently renders anything outside that as a missing-glyph box (looks like a
+# solid black square) instead of erroring. Groq occasionally returns "smart"
+# Unicode punctuation that falls outside WinAnsi — most commonly a non-breaking
+# hyphen (U+2011) in tags like "Value‑Seeker" instead of a plain ASCII hyphen —
+# which is exactly what produced the black squares in the Persona Profiles table.
+# Known offenders get mapped to a safe equivalent; anything else that still
+# can't be encoded gets replaced with '?' as a last resort, so a font gap shows
+# up as an obviously-wrong character instead of an invisible black box.
+_PDF_UNSAFE_CHAR_MAP = {
+    "\u2010": "-",   # hyphen
+    "\u2011": "-",   # non-breaking hyphen
+    "\u2012": "-",   # figure dash
+    "\u2015": "-",   # horizontal bar
+    "\u2212": "-",   # minus sign
+    "\u200b": "",    # zero-width space
+    "\u200c": "",    # zero-width non-joiner
+    "\u200d": "",    # zero-width joiner
+    "\ufeff": "",    # BOM / zero-width no-break space
+}
+
+
+def _pdf_safe(text) -> str:
+    """Sanitizes any dynamic (often LLM-generated) text before it goes into a
+    reportlab Paragraph/Table cell, so unsupported Unicode punctuation can't
+    render as a black missing-glyph box."""
+    s = str(text)
+    for bad, good in _PDF_UNSAFE_CHAR_MAP.items():
+        s = s.replace(bad, good)
+    return s.encode("cp1252", errors="replace").decode("cp1252")
+
 
 def _mpl_fig_to_image(fig, width_in=6.5, height_in=3.0):
     """Renders a matplotlib figure to a reportlab Image flowable via a PNG buffer."""
@@ -104,11 +135,11 @@ def build_report_pdf(experiment: dict, personas: list[dict], insights: dict) -> 
                                    textColor=colors.white, fontName="Helvetica-Bold")
 
     def cell(text, header=False):
-        return Paragraph(str(text), header_style if header else cell_style)
+        return Paragraph(_pdf_safe(text), header_style if header else cell_style)
 
     story = []
     story.append(Paragraph("Synthetic User Research Report", title_style))
-    story.append(Paragraph(f"Product: {experiment.get('product_name', '')}", body))
+    story.append(Paragraph(f"Product: {_pdf_safe(experiment.get('product_name', ''))}", body))
     story.append(Paragraph(f"Date: {date.today().strftime('%B %d, %Y')}", body))
     story.append(Spacer(1, 0.25 * inch))
 
@@ -117,7 +148,7 @@ def build_report_pdf(experiment: dict, personas: list[dict], insights: dict) -> 
     would_pay = insights.get("would_pay_pct", "N/A")
     story.append(Paragraph(
         f"{would_use}% of simulated target users indicated they would use "
-        f"{experiment.get('product_name', 'this product')}, and {would_pay}% "
+        f"{_pdf_safe(experiment.get('product_name', 'this product'))}, and {would_pay}% "
         f"indicated willingness to pay. Full theme and sentiment breakdown follows.",
         body))
     story.append(Spacer(1, 0.2 * inch))
@@ -125,7 +156,7 @@ def build_report_pdf(experiment: dict, personas: list[dict], insights: dict) -> 
     story.append(Paragraph("Methodology", h2))
     story.append(Paragraph(
         f"{len(personas)} synthetic personas were generated based on the target "
-        f"audience description: \"{experiment.get('target_audience', '')}\". "
+        f"audience description: \"{_pdf_safe(experiment.get('target_audience', ''))}\". "
         f"Personas were surveyed and/or interviewed to gather feedback aligned "
         f"with the stated research objectives.", body))
     story.append(Spacer(1, 0.25 * inch))
@@ -166,13 +197,13 @@ def build_report_pdf(experiment: dict, personas: list[dict], insights: dict) -> 
     story.append(Paragraph("Key Insights", h2))
     for theme in insights.get("themes", []):
         story.append(Paragraph(
-            f"• {theme.get('theme')} — mentioned by {theme.get('mentions_pct')}% of personas", body))
+            f"\u2022 {_pdf_safe(theme.get('theme'))} — mentioned by {theme.get('mentions_pct')}% of personas", body))
     story.append(Spacer(1, 0.2 * inch))
 
     story.append(Paragraph("What Users Want & Suggested Improvements", h2))
     user_wants_summary = insights.get("user_wants_summary", "")
     if user_wants_summary:
-        story.append(Paragraph(user_wants_summary, body))
+        story.append(Paragraph(_pdf_safe(user_wants_summary), body))
         story.append(Spacer(1, 0.1 * inch))
     suggestions = insights.get("suggestions", [])
     if suggestions:
@@ -200,7 +231,7 @@ def build_report_pdf(experiment: dict, personas: list[dict], insights: dict) -> 
 
     story.append(Paragraph("Key Quotes", h2))
     for q in insights.get("key_quotes", []):
-        story.append(Paragraph(f"\u201c{q.get('quote')}\u201d — {q.get('persona')}", body))
+        story.append(Paragraph(f"\u201c{_pdf_safe(q.get('quote'))}\u201d — {_pdf_safe(q.get('persona'))}", body))
 
     doc.build(story)
     buffer.seek(0)
