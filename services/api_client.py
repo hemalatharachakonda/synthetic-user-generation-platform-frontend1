@@ -154,7 +154,11 @@ def _persona_interview_notes(persona_id: str) -> str:
     """Summarizes this persona's prior Interview Mode answers (if any) so
     their Survey Mode answers stay consistent instead of contradicting what
     they already said when interviewed earlier — the mirror of
-    _persona_survey_context, which does the same thing in reverse."""
+    _persona_survey_context, which does the same thing in reverse.
+
+    Intentionally uncapped: a persona's memory shouldn't forget anything they
+    said more than 3 exchanges ago just because the conversation moved on.
+    """
     turns = st.session_state.get("chat_history", {}).get(persona_id) or []
     pairs = []
     pending_question = None
@@ -164,10 +168,31 @@ def _persona_interview_notes(persona_id: str) -> str:
         elif turn.get("role") == "assistant" and pending_question:
             pairs.append(f'Asked "{pending_question}", answered: "{turn.get("content", "")}"')
             pending_question = None
-    return " | ".join(pairs[-3:]) if pairs else ""
+    return " | ".join(pairs) if pairs else ""
 
 
-def _run_survey_via_groq(personas: list[dict], question: str) -> dict | None:
+def _persona_prior_survey_notes(persona_id: str, exclude_idx: int | None = None) -> str:
+    """Summarizes this SAME persona's answers to any OTHER questions already
+    asked earlier in the current survey run, so question 3 doesn't contradict
+    question 1 just because each question was being scored independently.
+    This is the gap that produces things like an 8.9 adoption score but a
+    7/10 answer to a differently-worded 'how likely are you to use this?'
+    question — without this, every survey question was answered in total
+    isolation from every other survey question."""
+    questions = st.session_state.get("survey_questions") or []
+    responses = st.session_state.get("survey_responses") or {}
+    notes = []
+    for q_idx, q_text in enumerate(questions):
+        if exclude_idx is not None and q_idx == exclude_idx:
+            continue
+        answer = (responses.get(q_idx) or {}).get(persona_id)
+        if answer:
+            notes.append(f'Asked "{q_text}", you rated it {answer.get("score", "-")}/10 '
+                         f'and said: "{answer.get("comment", "")}"')
+    return " | ".join(notes) if notes else ""
+
+
+def _run_survey_via_groq(personas: list[dict], question: str, question_idx: int | None = None) -> dict | None:
     """Asks Groq to answer the actual survey question in-character for every
     persona in one batched call. Returns {persona_id: {score, comment}} or
     None on any failure so the caller can fall back to mock data cleanly."""
@@ -183,6 +208,7 @@ def _run_survey_via_groq(personas: list[dict], question: str) -> dict | None:
             "bio": p.get("bio", ""),
             "baseline_adoption_score": p.get("adoption_score"),
             "prior_interview_notes": _persona_interview_notes(p["id"]),
+            "prior_survey_notes": _persona_prior_survey_notes(p["id"], exclude_idx=question_idx),
         }
         for p in personas
     ]
@@ -194,13 +220,21 @@ def _run_survey_via_groq(personas: list[dict], question: str) -> dict | None:
         "location, traits, and bio — different personas should give genuinely "
         "different answers, not near-identical ones. Each persona also has a "
         "baseline_adoption_score reflecting their general attitude toward this "
-        "product — treat it as context for their personality, not a cap: a specific "
-        "question can reasonably score higher or lower than that baseline if the "
-        "question itself points that way (e.g. a price-focused question can score "
-        "lower even for an otherwise enthusiastic persona). Just keep the reasoning "
-        "believable for who they are — don't flip a skeptic into a superfan for no "
-        "reason. If a persona has prior_interview_notes, stay consistent with what "
-        "they already said in that earlier conversation — do not contradict it. "
+        "product. Treat that score as their settled, memorized opinion, not a "
+        "fresh dice roll: if this question is essentially asking the same thing "
+        "as 'how likely are you to use/adopt this product' (just reworded), your "
+        "score MUST land within 1 point of baseline_adoption_score — do not "
+        "silently redecide their overall attitude every time the same question is "
+        "reworded. A more specific, narrower question (e.g. about price, a single "
+        "feature, or a specific worry) CAN reasonably score higher or lower than "
+        "that baseline, because it's measuring something more specific than 'would "
+        "you use this overall' — but the reasoning must stay believable for who "
+        "this persona is; don't flip a skeptic into a superfan for no reason. Every "
+        "persona has a persistent memory of this whole research session: if "
+        "prior_interview_notes or prior_survey_notes is non-empty, you MUST stay "
+        "consistent with what they already said there — do not contradict it, and "
+        "where relevant, build on it (e.g. repeat/refine a suggestion they already "
+        "raised rather than inventing an unrelated new one). "
         "Respond with ONLY a JSON array — no "
         "markdown, no code fences, no commentary — in exactly this shape, one "
         "entry per persona id given, same order:\n"
@@ -251,17 +285,60 @@ def _run_survey_via_groq(personas: list[dict], question: str) -> dict | None:
         return None
 
 
-def run_survey_question(personas: list[dict], question: str) -> dict:
+_ADOPTION_QUESTION_KEYWORDS = (
+    "likely are you to use", "likely would you use", "would you use this",
+    "would you buy", "would you adopt", "would you recommend",
+    "how likely are you", "chances you'd use", "likelihood",
+)
+
+
+def _is_primary_adoption_question(question: str) -> bool:
+    """Heuristic for detecting when a survey question is just a reworded version
+    of 'how likely are you to use/adopt this product overall' — i.e. the same
+    thing the persona's adoption_score already represents. Used to keep the
+    adoption score shown in the Persona Gallery / Interview badge from silently
+    drifting away from what Survey Mode just measured for that same question."""
+    q = (question or "").lower()
+    return any(kw in q for kw in _ADOPTION_QUESTION_KEYWORDS)
+
+
+def _sync_adoption_scores(personas: list[dict], question: str, results: dict) -> None:
+    """When the survey question just asked is essentially the persona's overall
+    adoption question, updates each persona's stored adoption_score to match
+    the measured answer. This is what keeps the score shown on the Persona
+    Gallery / Interview badge in sync with what Survey Mode actually measured,
+    instead of showing two different numbers (e.g. 8.9 at creation time vs 7
+    from a later, differently-worded survey question) for the same question."""
+    if not _is_primary_adoption_question(question):
+        return
+    roster = st.session_state.get("personas") or []
+    by_id = {p["id"]: p for p in roster}
+    for p in personas:
+        answer = results.get(p["id"])
+        if not answer:
+            continue
+        score = answer.get("score")
+        if score is None:
+            continue
+        live = by_id.get(p["id"])
+        if live is not None:
+            live["adoption_score"] = round(float(score), 1)
+
+
+def run_survey_question(personas: list[dict], question: str, question_idx: int | None = None) -> dict:
     if GROQ_API_KEY:
-        grounded = _run_survey_via_groq(personas, question)
+        grounded = _run_survey_via_groq(personas, question, question_idx)
         if grounded:
             # fill in any persona Groq happened to skip using the mock fallback
             missing = [p for p in personas if p["id"] not in grounded]
             if missing:
                 grounded.update(mock_data.run_survey_question(missing, question))
+            _sync_adoption_scores(personas, question, grounded)
             return grounded
         # fall through to mock on any failure so the UI never shows blanks
-    return mock_data.run_survey_question(personas, question)
+    results = mock_data.run_survey_question(personas, question)
+    _sync_adoption_scores(personas, question, results)
+    return results
 
 
 # ── Interview ─────────────────────────────────────────────────────────────────
@@ -313,8 +390,10 @@ def _persona_survey_context(persona: dict) -> str:
     if not lines:
         return ""
     return (
-        "\n\nIMPORTANT — you already answered some survey questions about this product earlier. "
-        "Stay consistent with these prior answers; do not contradict them:\n" + "\n".join(lines)
+        "\n\nIMPORTANT — this is your persistent memory of this research session. You already "
+        "answered these survey questions about this product earlier. Stay fully consistent with "
+        "these prior answers: don't contradict them, and if you raised a suggestion or concern "
+        "before, build on it here instead of inventing an unrelated new one:\n" + "\n".join(lines)
     )
 
 
@@ -348,8 +427,10 @@ def get_persona_response(persona: dict, message: str, history: list[dict]) -> st
     experiment = st.session_state.get("experiment") or {}
     if GROQ_API_KEY:
         messages = [{"role": "system", "content": _persona_system_prompt(persona)}]
-        # history already includes the just-sent user message as its last entry
-        for turn in history[-10:]:
+        # history already includes the just-sent user message as its last entry.
+        # Capped generously (not to 3-4 turns) so the persona doesn't "forget"
+        # something they said earlier in a long interview and contradict it later.
+        for turn in history[-30:]:
             role = "assistant" if turn["role"] == "assistant" else "user"
             messages.append({"role": role, "content": turn["content"]})
         reply = _call_groq(messages)

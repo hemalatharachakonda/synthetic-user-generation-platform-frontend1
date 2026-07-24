@@ -53,7 +53,7 @@ st.markdown(f"#### \u201c{questions[idx]}\u201d")
 if idx not in st.session_state.survey_responses:
     with st.spinner("Collecting persona responses..."):
         st.session_state.survey_responses[idx] = run_survey_question(
-            st.session_state.personas, questions[idx]
+            st.session_state.personas, questions[idx], question_idx=idx
         )
 
 survey_grid(st.session_state.personas, st.session_state.survey_responses[idx])
