@@ -2,6 +2,28 @@ import streamlit as st
 from styles.theme import score_tier
 
 
+@st.dialog("Field Notes")
+def _field_notes_dialog(persona: dict):
+    st.markdown(f"### {persona['name']}")
+    st.caption(f"{persona['age']} · {persona['occupation']} · {persona.get('location', '')}")
+    tags_html = "".join(f'<span class="tag-pill">{t}</span>' for t in persona.get("tags", []))
+    st.markdown(tags_html, unsafe_allow_html=True)
+    st.divider()
+
+    st.markdown("**Bio**")
+    st.write(persona.get("bio") or "No bio available.")
+
+    st.markdown("**Behavioral Pattern** — how they act")
+    st.write(persona.get("behavioral_pattern") or "Not generated for this persona.")
+
+    st.markdown("**Psychological Profile** — why they act that way")
+    st.write(persona.get("psychological_profile") or "Not generated for this persona.")
+
+    if persona.get("quote"):
+        st.markdown("**Representative Quote**")
+        st.markdown(f"> \u201c{persona['quote']}\u201d")
+
+
 def persona_card(persona: dict, on_interview=None, on_details=None):
     """Renders one persona as a 'specimen card' — the platform's signature UI element."""
     tier = score_tier(persona["adoption_score"])
@@ -41,5 +63,4 @@ def persona_card(persona: dict, on_interview=None, on_details=None):
                 if on_details:
                     on_details(persona["id"])
                 else:
-                    with st.expander("Field notes", expanded=True):
-                        st.write(persona.get("bio", "No bio available."))
+                    _field_notes_dialog(persona)

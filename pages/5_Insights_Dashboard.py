@@ -165,6 +165,60 @@ with tab_insights:
     # ── What users want — plain-English summary, grounded in real feedback ──
     render_user_wants_summary(insights.get("user_wants_summary", ""))
 
+    # ── Would Use — by persona segment, with reasoning per group ────────────
+    st.markdown('<div class="section-label">Would Use This Product — By Segment</div>', unsafe_allow_html=True)
+    st.caption("Personas grouped by occupation, so you can see which kinds of users adopt this and why.")
+    segments = insights.get("segments", [])
+    if not segments:
+        st.info("No personas yet.")
+    else:
+        seg_cols = st.columns(min(len(segments), 3))
+        for i, seg in enumerate(segments):
+            with seg_cols[i % len(seg_cols)]:
+                with st.container(border=True):
+                    st.markdown(
+                        f'<div style="color: var(--ink-on-dark); font-weight: 700; font-size: 1.02rem;">'
+                        f'{seg["segment"]}</div>'
+                        f'<div style="margin: 0.3rem 0;">'
+                        f'<span class="score-badge score-mid">{seg["would_use_pct"]}% would use</span> '
+                        f'<span style="color: var(--ink-on-dark-soft); font-size: 0.85rem;">'
+                        f'avg {seg["avg_score"]}/10 · {seg["count"]} persona{"s" if seg["count"] != 1 else ""}</span>'
+                        f'</div>'
+                        f'<div style="color: var(--ink-on-dark-soft); font-size: 0.9rem;">{seg["reasoning"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+    # ── Agreement patterns & behavioral trends ───────────────────────────────
+    agreement = insights.get("agreement_patterns", [])
+    trends = insights.get("behavioral_trends", [])
+    if agreement or trends:
+        st.markdown('<div class="section-label">Agreement Patterns & Behavioral Trends</div>', unsafe_allow_html=True)
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            st.markdown("**How much did the panel agree?**")
+            if not agreement:
+                st.caption("Ask more than one survey question with multiple personas to see this.")
+            for a in agreement:
+                q_text = st.session_state.survey_questions[a["question_index"]] if a["question_index"] < len(st.session_state.survey_questions) else "Question"
+                with st.container(border=True):
+                    st.markdown(
+                        f'<span class="score-badge score-mid">{a["level"]}</span> '
+                        f'<span style="color: var(--ink-on-dark-soft); font-size: 0.85rem;">'
+                        f'avg {a["avg_score"]}/10, spread of {a["spread"]} points across {a["respondents"]} personas</span>'
+                        f'<div style="color: var(--ink-on-dark); margin-top: 0.2rem;">\u201c{q_text}\u201d</div>',
+                        unsafe_allow_html=True,
+                    )
+        with ac2:
+            st.markdown("**What traits correlate with adoption?**")
+            if not trends:
+                st.caption("Not enough personas/data yet to detect a meaningful trend.")
+            for t in trends:
+                with st.container(border=True):
+                    st.markdown(
+                        f'<div style="color: var(--ink-on-dark);">{t["summary"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+
     st.markdown('<div class="section-label">Theme Clusters & Sentiment</div>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:

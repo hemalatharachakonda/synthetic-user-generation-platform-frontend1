@@ -23,7 +23,7 @@ import uuid
 import requests
 import streamlit as st
 from config import GROQ_TIMEOUT_SECONDS, GROQ_API_KEY, GROQ_MODEL
-from services import mock_data
+from services import mock_data, data_processor
 
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -59,18 +59,24 @@ def _enrich_personas_via_groq(roster: list[dict], product_name: str, description
         "roster of personas (name, occupation, and location already fixed — do not "
         "change these). For EACH persona, generate a realistic age for that name/occupation/location "
         "and target audience, plus realistic, DIFFERENT personality traits, an "
-        "adoption score, a short bio, and a representative quote — grounded in who "
-        "they specifically are and how this specific product would land for them. "
-        "Personas should genuinely disagree with each other where realistic (some "
-        "skeptical, some enthusiastic), not all be uniformly positive. Respond with "
-        "ONLY a JSON array — no markdown, no code fences, no commentary — one entry "
-        "per persona id given, same order, in exactly this shape:\n"
+        "adoption score, a short bio, a behavioral pattern, a psychological profile, and a "
+        "representative quote — grounded in who they specifically are and how this "
+        "specific product would land for them. Personas should genuinely disagree with "
+        "each other where realistic (some skeptical, some enthusiastic), not all be "
+        "uniformly positive. Respond with ONLY a JSON array — no markdown, no code "
+        "fences, no commentary — one entry per persona id given, same order, in exactly "
+        "this shape:\n"
         '[{"persona_id": "...", "age": 18-75 (fits the occupation and target '
         'audience), "tags": ["3-4 short traits like Early Adopter, '
         'Budget-Conscious, Skeptical, Tech-Savvy"], "adoption_score": 1-10 (one '
         'decimal), "bio": "2-3 sentences, first-person-adjacent, tying their life to '
-        'this product", "quote": "one first-person sentence, their honest reaction "'
-        'to this specific product"}]'
+        'this product", "behavioral_pattern": "1-2 sentences on HOW they actually '
+        'behave day-to-day that\'s relevant to adopting this product — e.g. how they '
+        'discover new tools, their buying habits, routine, or research process before '
+        'trying something new", "psychological_profile": "1-2 sentences on WHY they '
+        'behave that way — their core motivation, biggest fear/hesitation, or what '
+        'they value most when evaluating a product like this", "quote": "one '
+        'first-person sentence, their honest reaction to this specific product"}]'
     )
     user_prompt = (
         f"Product: \"{product_name}\" — {description}\n"
@@ -122,6 +128,8 @@ def _enrich_personas_via_groq(roster: list[dict], product_name: str, description
             "tags": entry.get("tags") or [],
             "adoption_score": max(1.0, min(10.0, score)),
             "bio": entry.get("bio", ""),
+            "behavioral_pattern": entry.get("behavioral_pattern", ""),
+            "psychological_profile": entry.get("psychological_profile", ""),
             "quote": entry.get("quote", ""),
         })
 
@@ -527,9 +535,15 @@ def _extract_suggestions_via_groq(personas: list[dict], survey_responses: dict, 
         '"specific actionable improvement to THIS product", "category": "short label like '
         'Pricing, Feature, UX, Trust, Support, Performance, Design", "priority": '
         '"high|medium|low", "personas": ["names who would raise it"]}] (4-6 items, most '
-        "important first)}\n"
-        "Every theme, quote, and suggestion must be specific to this product and these "
-        "personas — never generic placeholder feedback that could apply to any app."
+        'important first), "segment_reasoning": [{"segment": "exact occupation string from '
+        'the roster", "reasoning": "1-2 sentences explaining WHY this occupation segment '
+        'would use/not use this product, grounded in their actual traits/bio/feedback"}] '
+        "(one entry per distinct occupation in the roster), \"behavioral_trends\": "
+        '[{"summary": "1 sentence describing a pattern linking a trait/behavior to adoption, '
+        'e.g. how budget-conscious or early-adopter personas responded differently than others"}] '
+        "(1-3 items, only include ones genuinely supported by the roster/feedback, omit if none)}\n"
+        "Every theme, quote, suggestion, and reasoning line must be specific to this product and "
+        "these personas — never generic placeholder feedback that could apply to any app."
     )
     user_prompt = (
         f"Product: \"{experiment.get('product_name', 'this product')}\" — "
@@ -583,6 +597,13 @@ def extract_insights(personas: list[dict], survey_responses: dict, chat_history:
     # the actual product + personas even before any survey/interview exists.
     insights = mock_data.extract_insights(personas, survey_responses, chat_history)
 
+    # Segment breakdown, agreement patterns, and behavioral trends are always
+    # computed locally from real persona/survey data (no LLM needed, so this
+    # never returns empty just because Groq isn't configured or fails).
+    insights["segments"] = data_processor.segment_breakdown(personas)
+    insights["agreement_patterns"] = data_processor.compute_agreement_patterns(personas, survey_responses)
+    insights["behavioral_trends"] = data_processor.compute_behavioral_trends(personas)
+
     if GROQ_API_KEY and personas:
         grounded = _extract_suggestions_via_groq(personas, survey_responses, chat_history)
         if grounded:
@@ -596,6 +617,19 @@ def extract_insights(personas: list[dict], survey_responses: dict, chat_history:
                 insights["user_wants_summary"] = grounded["user_wants_summary"]
             if grounded.get("suggestions"):
                 insights["suggestions"] = grounded["suggestions"]
+            # Real per-segment reasoning from Groq, grounded in actual traits/
+            # feedback, replaces the local template-based reasoning line —
+            # matched back onto the locally-computed stats by segment name so
+            # the numbers stay reliable even if Groq's own math is off.
+            if grounded.get("segment_reasoning"):
+                reasoning_by_segment = {
+                    r.get("segment"): r.get("reasoning") for r in grounded["segment_reasoning"] if r.get("segment")
+                }
+                for seg in insights["segments"]:
+                    if seg["segment"] in reasoning_by_segment:
+                        seg["reasoning"] = reasoning_by_segment[seg["segment"]]
+            if grounded.get("behavioral_trends"):
+                insights["behavioral_trends"] = grounded["behavioral_trends"]
 
     insights.setdefault("suggestions", [])
     insights.setdefault("user_wants_summary", "")

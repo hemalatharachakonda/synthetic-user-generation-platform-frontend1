@@ -46,9 +46,45 @@ def random_roster(count: int) -> list[dict]:
     return roster
 
 
+# Behavioral pattern (HOW they act) and psychological profile (WHY they act
+# that way) per trait — used to build these fields locally without Groq, by
+# combining the phrases for whichever traits a persona actually got.
+_BEHAVIOR_BY_TAG = {
+    "Extrovert": "talks through new tools with friends or colleagues before deciding",
+    "Introvert": "prefers to quietly research and try things alone before committing",
+    "Analytical": "reads reviews and compares specs in detail before any purchase",
+    "Early Adopter": "actively seeks out and tries new products as soon as they launch",
+    "Skeptical": "waits to see how a product performs for others before trying it",
+    "Budget-Conscious": "checks pricing and looks for discounts before anything else",
+    "Tech-Savvy": "explores a product's settings and features hands-on immediately",
+    "Detail-Oriented": "reads the fine print and documentation before adopting a tool",
+    "Impulsive Buyer": "signs up on a whim if something looks appealing in the moment",
+    "Risk-Averse": "sticks with familiar tools unless given a strong, proven reason to switch",
+    "Trendsetter": "wants to be first among peers to use and talk about new things",
+    "Loyal Customer": "sticks with brands they already trust rather than switching often",
+    "Value Seeker": "weighs cost against features carefully before deciding",
+}
+_PSYCHOLOGY_BY_TAG = {
+    "Extrovert": "is motivated by social validation and what their circle thinks",
+    "Introvert": "values independence and doesn't want to feel pressured into a decision",
+    "Analytical": "fears making an uninformed choice more than missing out",
+    "Early Adopter": "is driven by curiosity and the appeal of being ahead of the curve",
+    "Skeptical": "has been burned by overhyped products before and guards against that",
+    "Budget-Conscious": "worries about wasting money on something that won't pay off",
+    "Tech-Savvy": "is motivated by mastery — wanting to fully understand a tool, not just use it",
+    "Detail-Oriented": "fears hidden costs or limitations they didn't anticipate",
+    "Impulsive Buyer": "is driven by instant gratification and emotional appeal",
+    "Risk-Averse": "prioritizes stability and predictability over novelty",
+    "Trendsetter": "is motivated by status and being seen as ahead of others",
+    "Loyal Customer": "values consistency and dislikes the friction of switching tools",
+    "Value Seeker": "is motivated by getting the most return for their effort or money",
+}
+
+
 def fill_traits_locally(roster: list[dict], target_audience: str) -> list[dict]:
-    """Fills in age/tags/adoption_score/bio/quote for a roster using local
-    mock logic — the fallback path when Groq is unavailable or fails."""
+    """Fills in age/tags/adoption_score/bio/behavioral_pattern/
+    psychological_profile/quote for a roster using local mock logic — the
+    fallback path when Groq is unavailable or fails."""
     for p in roster:
         p.setdefault("age", random.randint(22, 58))
         p["tags"] = random.sample(PERSONALITY_TAG_POOL, k=3)
@@ -57,6 +93,16 @@ def fill_traits_locally(roster: list[dict], target_audience: str) -> list[dict]:
             f"{p['name']} is a {p['age']}-year-old {p['occupation'].lower()} based in "
             f"{p.get('location', 'their city')} who fits the target profile: "
             f"{target_audience.strip()[:120]}."
+        )
+        behaviors = [_BEHAVIOR_BY_TAG[t] for t in p["tags"] if t in _BEHAVIOR_BY_TAG][:2]
+        p["behavioral_pattern"] = (
+            f"{p['name']} typically {' and '.join(behaviors)}." if behaviors
+            else f"{p['name']} follows a fairly typical adoption process for their role."
+        )
+        psych = [_PSYCHOLOGY_BY_TAG[t] for t in p["tags"] if t in _PSYCHOLOGY_BY_TAG][:2]
+        p["psychological_profile"] = (
+            f"At their core, {p['name']} {' and '.join(psych)}." if psych
+            else f"{p['name']}'s decisions are mostly driven by practical day-to-day needs."
         )
         p["quote"] = ""
     return roster
