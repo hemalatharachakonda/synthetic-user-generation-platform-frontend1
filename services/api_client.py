@@ -564,7 +564,7 @@ def _extract_suggestions_via_groq(personas: list[dict], survey_responses: dict, 
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    raw = _call_groq(messages, max_tokens=2000)
+    raw = _call_groq(messages, max_tokens=1000)
     if not raw:
         return None
 
