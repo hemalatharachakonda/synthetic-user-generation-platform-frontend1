@@ -193,6 +193,12 @@ with tab_insights:
     trends = insights.get("behavioral_trends", [])
     if agreement or trends:
         st.markdown('<div class="section-label">Agreement Patterns & Behavioral Trends</div>', unsafe_allow_html=True)
+        st.caption(
+            "Every survey question gets a 1-10 \u201chow positively did they respond\u201d score, even "
+            "open-ended ones like \u201cany suggestions?\u201d — so this section measures how much the "
+            "panel's *tone* agreed on each question, and which traits track with higher/lower scores "
+            "overall. It's a consistency check, not a vote count."
+        )
         ac1, ac2 = st.columns(2)
         with ac1:
             st.markdown("**How much did the panel agree?**")
