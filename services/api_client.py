@@ -370,6 +370,10 @@ def _looks_incomplete(text: str) -> bool:
     t = (text or "").strip()
     if len(t) < 15:
         return True
+    # A JSON payload (used for insights/personas/etc.) correctly ends in
+    # "}" or "]", not sentence punctuation — don't flag those as cut off.
+    if t[-1] in "}]":
+        return False
     if t[-1] not in ".!?\u2019\u201d\"'":
         return True
     return False
@@ -400,7 +404,7 @@ def _call_groq(messages: list[dict], max_tokens: int = 220, _retry: bool = True)
         # If the model got cut off before finishing a thought, retry once with
         # more room instead of showing a half sentence like "I gave it a".
         if _retry and (finish_reason == "length" or _looks_incomplete(reply)):
-            return _call_groq(messages, max_tokens=max_tokens + 200, _retry=False) or reply
+            return _call_groq(messages, max_tokens=max_tokens + 600, _retry=False) or reply
         return reply
     except requests.RequestException as e:
         st.error(f"Groq request failed: {e}")
@@ -564,7 +568,11 @@ def _extract_suggestions_via_groq(personas: list[dict], survey_responses: dict, 
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    raw = _call_groq(messages, max_tokens=1000)
+    # The insights payload is the largest JSON shape we ask Groq for (themes +
+    # quotes + suggestions + per-occupation segment reasoning + trends), so it
+    # needs a much bigger token budget than the other calls or it gets cut
+    # off mid-JSON and fails to parse.
+    raw = _call_groq(messages, max_tokens=2200)
     if not raw:
         return None
 
