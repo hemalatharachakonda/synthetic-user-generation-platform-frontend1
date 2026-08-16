@@ -38,6 +38,18 @@ GROQ_TIMEOUT_SECONDS = 30
 GROQ_API_KEY = _get_setting("GROQ_API_KEY", "")
 GROQ_MODEL = _get_setting("GROQ_MODEL", "openai/gpt-oss-120b")
 
+# ── Backend — optional FastAPI backend. When reachable, it's tried FIRST for
+# experiments/personas/surveys/interviews/insights; Groq direct is the second
+# fallback, and local mock data is the last-resort fallback (unchanged from
+# before). Set BACKEND_URL to "" (blank) in secrets/.env to skip it entirely
+# and go straight to the Groq/mock behavior this app already had.
+BACKEND_URL = _get_setting("BACKEND_URL", "https://synthetic-ai-user-backend-deployment-2.onrender.com")
+# Render's free tier spins the backend down after inactivity, so the first
+# request after a while can take 30-50s to "cold start" — these calls get a
+# longer timeout. Once warm, normal calls use the shorter timeout.
+BACKEND_TIMEOUT_SECONDS = 20
+BACKEND_COLD_START_TIMEOUT_SECONDS = 55
+
 # ── App metadata ─────────────────────────────────────────────────────────────
 APP_NAME = "Synthetic User Generation Platform"
 APP_ICON = "SU"

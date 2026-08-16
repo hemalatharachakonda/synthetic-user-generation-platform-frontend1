@@ -22,15 +22,100 @@ import random
 import uuid
 import requests
 import streamlit as st
-from config import GROQ_TIMEOUT_SECONDS, GROQ_API_KEY, GROQ_MODEL
+from config import (
+    GROQ_TIMEOUT_SECONDS, GROQ_API_KEY, GROQ_MODEL,
+    BACKEND_URL, BACKEND_TIMEOUT_SECONDS, BACKEND_COLD_START_TIMEOUT_SECONDS,
+)
 from services import mock_data, data_processor
 
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+# ── Backend integration ──────────────────────────────────────────────────────
+# Real backend, deployed separately (FastAPI on Render). Every public function
+# below tries the backend first (when an experiment was actually created
+# there), then falls back to the existing Groq-direct path, then to local
+# mock data — same three-layer fallback pattern already used for Groq/mock,
+# just with one more rung on top. If the backend is unreachable or slow
+# (e.g. cold start taking too long), everything below transparently falls
+# through to the behavior this app already had, so the app never breaks.
+BACKEND_API_BASE = f"{BACKEND_URL.rstrip('/')}/api/v1" if BACKEND_URL else ""
+
+
+def _backend_call(method: str, path: str, json_body: dict | None = None, timeout: int | None = None):
+    """Thin wrapper around the backend's REST API. Returns the parsed JSON
+    body on success, or None on ANY failure (network error, timeout, non-2xx
+    status, bad JSON) so callers can fall back cleanly without special-casing
+    error types."""
+    if not BACKEND_API_BASE:
+        return None
+    try:
+        resp = requests.request(
+            method, f"{BACKEND_API_BASE}{path}",
+            json=json_body, timeout=timeout or BACKEND_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+        if resp.status_code == 204 or not resp.content:
+            return {}
+        return resp.json()
+    except (requests.RequestException, ValueError):
+        return None
+
+
+def _is_backend_experiment(experiment: dict) -> bool:
+    return bool(experiment and experiment.get("_backend") and experiment.get("id"))
+
+
+def _map_backend_persona(bp: dict) -> dict:
+    """Maps the backend's richer Persona schema down to the exact shape every
+    page/component already expects from generate_personas (see mock_data /
+    the Groq-enrichment path above) — so nothing downstream needs to change."""
+    behavioral = bp.get("behavioral_patterns") or []
+    profile_bits = []
+    if bp.get("core_values"):
+        profile_bits.append("Values " + ", ".join(bp["core_values"]))
+    if bp.get("motivations"):
+        profile_bits.append("motivated by " + ", ".join(bp["motivations"]))
+    if bp.get("pain_points"):
+        profile_bits.append("frustrated by " + ", ".join(bp["pain_points"]))
+    return {
+        "id": bp.get("id"),
+        "name": bp.get("name", ""),
+        "occupation": bp.get("occupation", ""),
+        "location": bp.get("location", ""),
+        "avatar_seed": bp.get("avatar_seed") or bp.get("name") or bp.get("id"),
+        "age": bp.get("age"),
+        "tags": bp.get("tags") or (bp.get("personality_traits") or [])[:4],
+        "adoption_score": bp.get("adoption_score", 5.0),
+        "bio": bp.get("bio", ""),
+        "behavioral_pattern": "; ".join(behavioral) if behavioral else "",
+        "psychological_profile": "; ".join(profile_bits) if profile_bits else "",
+        "quote": bp.get("quote") or "",
+    }
 
 
 # ── Experiments ───────────────────────────────────────────────────────────────
 
 def create_experiment(product_name, description, target_audience, objectives, persona_count=6) -> dict:
+    backend = _backend_call("POST", "/experiments", {
+        "title": product_name,
+        "product_description": description,
+        "target_audience": target_audience,
+        "research_objectives": objectives,
+        "persona_count": persona_count,
+    }, timeout=BACKEND_COLD_START_TIMEOUT_SECONDS)
+    if backend and backend.get("id"):
+        return {
+            "id": backend["id"],
+            "product_name": product_name,
+            "description": description,
+            "target_audience": target_audience,
+            "objectives": objectives,
+            "status": backend.get("status", "draft"),
+            "_backend": True,  # tags this experiment as backend-created, so
+                                # later calls (personas/survey/interview/
+                                # insights) know it's safe to use the backend
+        }
+
     return {
         "id": f"exp_{uuid.uuid4().hex[:8]}",
         "product_name": product_name,
@@ -38,6 +123,7 @@ def create_experiment(product_name, description, target_audience, objectives, pe
         "target_audience": target_audience,
         "objectives": objectives,
         "status": "draft",
+        "_backend": False,
     }
 
 
@@ -144,6 +230,16 @@ def _enrich_personas_via_groq(roster: list[dict], product_name: str, description
 
 
 def generate_personas(experiment: dict, product_name, description, target_audience, objectives, count) -> list[dict]:
+    if _is_backend_experiment(experiment):
+        backend = _backend_call("POST", "/personas/generate", {
+            "experiment_id": experiment["id"],
+            "persona_count": count,
+        }, timeout=BACKEND_COLD_START_TIMEOUT_SECONDS)
+        items = (backend or {}).get("items")
+        if items:
+            return [_map_backend_persona(p) for p in items]
+        # falls through to Groq/local mock below on any backend failure
+
     # Names, occupations, locations always come from local mock pools.
     roster = mock_data.random_roster(count)
 
@@ -344,7 +440,68 @@ def _sync_adoption_scores(personas: list[dict], question: str, results: dict) ->
             live["adoption_score"] = round(float(score), 1)
 
 
+def _run_survey_via_backend(personas: list[dict], question: str, question_idx: int | None) -> dict | None:
+    """Creates a single-question survey on the backend, executes it across
+    all personas, and caches the result by question index — so flipping back
+    to a previous question (Previous/Next buttons) doesn't re-call the
+    backend. Each new question gets its own tiny survey rather than
+    re-running the whole survey, since the backend re-executes every
+    question in a survey on each /execute call."""
+    experiment = st.session_state.get("experiment") or {}
+    if not _is_backend_experiment(experiment):
+        return None
+
+    cache_key = question_idx if question_idx is not None else question
+    cache = st.session_state.setdefault("_backend_survey_cache", {})
+    if cache_key in cache:
+        return cache[cache_key]
+
+    survey = _backend_call("POST", "/surveys", {
+        "experiment_id": experiment["id"],
+        "title": f"Q{question_idx + 1}" if question_idx is not None else "Ad-hoc question",
+        "questions": [question],
+    })
+    if not survey or not survey.get("id"):
+        return None
+
+    execution = _backend_call("POST", "/surveys/execute", {
+        "survey_id": survey["id"],
+        "regenerate": False,
+    }, timeout=BACKEND_COLD_START_TIMEOUT_SECONDS)
+    persona_responses = (execution or {}).get("persona_responses")
+    if not persona_responses:
+        return None
+
+    results = {}
+    for pr in persona_responses:
+        pid = pr.get("persona_id")
+        answers = pr.get("responses") or []
+        if not pid or not answers:
+            continue
+        answer = answers[0]
+        score = answer.get("rating")
+        try:
+            score = max(1, min(10, int(score)))
+        except (TypeError, ValueError):
+            score = 5
+        results[pid] = {"score": score, "comment": answer.get("answer", "")}
+
+    if not results:
+        return None
+    cache[cache_key] = results
+    return results
+
+
 def run_survey_question(personas: list[dict], question: str, question_idx: int | None = None) -> dict:
+    backend_results = _run_survey_via_backend(personas, question, question_idx)
+    if backend_results:
+        missing = [p for p in personas if p["id"] not in backend_results]
+        if missing:
+            filler = _run_survey_via_groq(missing, question, question_idx) if GROQ_API_KEY else None
+            backend_results.update(filler or mock_data.run_survey_question(missing, question))
+        _sync_adoption_scores(personas, question, backend_results)
+        return backend_results
+
     if GROQ_API_KEY:
         grounded = _run_survey_via_groq(personas, question, question_idx)
         if grounded:
@@ -468,8 +625,45 @@ def _persona_system_prompt(persona: dict) -> str:
     )
 
 
+def _get_persona_response_via_backend(persona: dict, message: str) -> str | None:
+    """Reuses one backend interview session per persona for the lifetime of
+    the browser session (created lazily on the first message), then posts
+    each new message to it and returns the persona's latest reply."""
+    experiment = st.session_state.get("experiment") or {}
+    if not _is_backend_experiment(experiment):
+        return None
+
+    sessions = st.session_state.setdefault("_backend_interview_sessions", {})
+    interview_id = sessions.get(persona["id"])
+    if not interview_id:
+        created = _backend_call("POST", "/interviews", {
+            "experiment_id": experiment["id"],
+            "persona_id": persona["id"],
+        }, timeout=BACKEND_COLD_START_TIMEOUT_SECONDS)
+        if not created or not created.get("id"):
+            return None
+        interview_id = created["id"]
+        sessions[persona["id"]] = interview_id
+
+    updated = _backend_call("POST", f"/interviews/{interview_id}/message", {
+        "persona_id": persona["id"],
+        "message": message,
+    }, timeout=BACKEND_COLD_START_TIMEOUT_SECONDS)
+    if not updated:
+        return None
+    for msg in reversed(updated.get("messages") or []):
+        if msg.get("role") == "assistant" and msg.get("content"):
+            return msg["content"]
+    return None
+
+
 def get_persona_response(persona: dict, message: str, history: list[dict]) -> str:
     experiment = st.session_state.get("experiment") or {}
+
+    backend_reply = _get_persona_response_via_backend(persona, message)
+    if backend_reply:
+        return backend_reply
+
     if GROQ_API_KEY:
         messages = [{"role": "system", "content": _persona_system_prompt(persona)}]
         # history already includes the just-sent user message as its last entry.
@@ -608,10 +802,18 @@ def _extract_suggestions_via_groq(personas: list[dict], survey_responses: dict, 
     return None
 
 
+def _extract_insights_via_backend() -> dict | None:
+    experiment = st.session_state.get("experiment") or {}
+    if not _is_backend_experiment(experiment):
+        return None
+    return _backend_call("POST", f"/insights/generate/{experiment['id']}", {},
+                          timeout=BACKEND_COLD_START_TIMEOUT_SECONDS)
+
+
 def extract_insights(personas: list[dict], survey_responses: dict, chat_history: dict) -> dict:
     # Base chart data is always built locally, then layered with a real
-    # Groq-grounded analysis on top when a key is configured — grounded in
-    # the actual product + personas even before any survey/interview exists.
+    # grounded analysis on top — backend first (when this experiment lives
+    # there), then Groq direct, same priority as everywhere else in this file.
     insights = mock_data.extract_insights(personas, survey_responses, chat_history)
 
     # Segment breakdown, agreement patterns, and behavioral trends are always
@@ -621,32 +823,40 @@ def extract_insights(personas: list[dict], survey_responses: dict, chat_history:
     insights["agreement_patterns"] = data_processor.compute_agreement_patterns(personas, survey_responses)
     insights["behavioral_trends"] = data_processor.compute_behavioral_trends(personas)
 
-    if GROQ_API_KEY and personas:
+    grounded = _extract_insights_via_backend()
+    if grounded is not None:
+        if grounded.get("would_use_pct") is not None:
+            insights["would_use_pct"] = grounded["would_use_pct"]
+        if grounded.get("would_pay_pct") is not None:
+            insights["would_pay_pct"] = grounded["would_pay_pct"]
+
+    if grounded is None and GROQ_API_KEY and personas:
         grounded = _extract_suggestions_via_groq(personas, survey_responses, chat_history)
-        if grounded:
-            if grounded.get("themes"):
-                insights["themes"] = grounded["themes"]
-            if grounded.get("sentiment"):
-                insights["sentiment"] = grounded["sentiment"]
-            if grounded.get("key_quotes"):
-                insights["key_quotes"] = grounded["key_quotes"]
-            if grounded.get("user_wants_summary"):
-                insights["user_wants_summary"] = grounded["user_wants_summary"]
-            if grounded.get("suggestions"):
-                insights["suggestions"] = grounded["suggestions"]
-            # Real per-segment reasoning from Groq, grounded in actual traits/
-            # feedback, replaces the local template-based reasoning line —
-            # matched back onto the locally-computed stats by segment name so
-            # the numbers stay reliable even if Groq's own math is off.
-            if grounded.get("segment_reasoning"):
-                reasoning_by_segment = {
-                    r.get("segment"): r.get("reasoning") for r in grounded["segment_reasoning"] if r.get("segment")
-                }
-                for seg in insights["segments"]:
-                    if seg["segment"] in reasoning_by_segment:
-                        seg["reasoning"] = reasoning_by_segment[seg["segment"]]
-            if grounded.get("behavioral_trends"):
-                insights["behavioral_trends"] = grounded["behavioral_trends"]
+    if grounded:
+        if grounded.get("themes"):
+            insights["themes"] = grounded["themes"]
+        if grounded.get("sentiment"):
+            insights["sentiment"] = grounded["sentiment"]
+        if grounded.get("key_quotes"):
+            insights["key_quotes"] = grounded["key_quotes"]
+        if grounded.get("user_wants_summary"):
+            insights["user_wants_summary"] = grounded["user_wants_summary"]
+        if grounded.get("suggestions"):
+            insights["suggestions"] = grounded["suggestions"]
+        # Real per-segment reasoning (from Groq grounding) replaces the local
+        # template-based reasoning line — matched back onto the locally-
+        # computed stats by segment name so the numbers stay reliable even
+        # if the model's own math is off. (The backend's insights payload
+        # doesn't include this field, so it's a no-op when backend-grounded.)
+        if grounded.get("segment_reasoning"):
+            reasoning_by_segment = {
+                r.get("segment"): r.get("reasoning") for r in grounded["segment_reasoning"] if r.get("segment")
+            }
+            for seg in insights["segments"]:
+                if seg["segment"] in reasoning_by_segment:
+                    seg["reasoning"] = reasoning_by_segment[seg["segment"]]
+        if grounded.get("behavioral_trends"):
+            insights["behavioral_trends"] = grounded["behavioral_trends"]
 
     insights.setdefault("suggestions", [])
     insights.setdefault("user_wants_summary", "")
