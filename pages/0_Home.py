@@ -1,7 +1,6 @@
 import streamlit as st
 from config import APP_NAME, APP_ICON, APP_TAGLINE, GROQ_API_KEY
 from utils.state_manager import init_session_state, has_experiment
-from services.api_client import list_backend_experiments, resume_backend_experiment
 from styles.theme import load_css
 
 st.set_page_config(page_title="Home", page_icon=APP_ICON, layout="wide")
@@ -46,30 +45,15 @@ with c2:
 
 st.markdown('<div class="section-label">Recent Experiments</div>', unsafe_allow_html=True)
 
-# The backend is the real source of truth (survives reloads); session-only
-# history is used only as a fallback for entries the backend doesn't know
-# about yet (e.g. backend was unreachable when this ran).
-if "recent_experiments_loaded" not in st.session_state:
-    with st.spinner("Loading recent experiments..."):
-        backend_recent = list_backend_experiments()
-    if backend_recent is not None:
-        backend_ids = {e["id"] for e in backend_recent}
-        session_only = [
-            e for e in st.session_state.get("experiments_history", [])
-            if e.get("id") not in backend_ids
-        ]
-        st.session_state.experiments_history = backend_recent + session_only
-    st.session_state.recent_experiments_loaded = True
-
 dismissed = st.session_state.get("dismissed_experiment_ids", set())
 recent = [e for e in st.session_state.get("experiments_history", []) if e.get("id") not in dismissed]
 
 if not recent:
     st.info("No experiments logged yet. Start your first one above!")
 else:
-    for exp in recent[:5]:
+    for exp in recent[-5:][::-1]:
         with st.container(border=True):
-            cols = st.columns([3, 1, 1, 1])
+            cols = st.columns([3, 1, 1])
             cols[0].markdown(f"**{exp['product_name']}**")
             pct = exp.get("would_use_pct", 0)
             tier_color = "score-high" if pct >= 60 else "score-mid" if pct >= 40 else "score-low"
@@ -77,15 +61,6 @@ else:
                 f'<span class="score-badge {tier_color}">{pct}% WOULD USE</span>',
                 unsafe_allow_html=True,
             )
-            if exp.get("_backend"):
-                if cols[2].button("Resume", key=f"resume_{exp['id']}", width='stretch'):
-                    with st.spinner("Loading experiment..."):
-                        result = resume_backend_experiment(exp["id"])
-                    if result:
-                        st.session_state.experiment, st.session_state.personas = result
-                        st.switch_page("pages/5_Insights_Dashboard.py")
-                    else:
-                        st.error("Couldn't load this experiment from the backend right now.")
-            if cols[3].button("Delete", key=f"delete_{exp.get('id', exp['product_name'])}", width='stretch'):
+            if cols[2].button("Delete", key=f"delete_{exp.get('id', exp['product_name'])}", width='stretch'):
                 st.session_state.dismissed_experiment_ids.add(exp.get("id", exp["product_name"]))
                 st.rerun()

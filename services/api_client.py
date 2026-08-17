@@ -865,54 +865,6 @@ def extract_insights(personas: list[dict], survey_responses: dict, chat_history:
 
 # ── Reports ───────────────────────────────────────────────────────────────────
 
-def list_backend_experiments(limit: int = 5) -> list[dict] | None:
-    """Fetches the most recent experiments straight from the backend database,
-    so 'Recent Experiments' survives a browser reload instead of relying on
-    in-memory session state. Returns None if the backend is unreachable (the
-    caller should fall back to session-only history in that case)."""
-    overview = _backend_call("GET", "/dashboard/overview")
-    if overview is None:
-        return None
-
-    results = []
-    for exp in (overview.get("recent_experiments") or [])[:limit]:
-        would_use_pct = 0
-        dash = _backend_call("GET", f"/dashboard/experiment/{exp['id']}")
-        if dash and dash.get("insights"):
-            would_use_pct = dash["insights"].get("would_use_pct") or 0
-        results.append({
-            "id": exp["id"],
-            "product_name": exp.get("title", ""),
-            "status": exp.get("status", ""),
-            "would_use_pct": would_use_pct,
-            "_backend": True,
-        })
-    return results
-
-
-def resume_backend_experiment(experiment_id: str) -> tuple[dict, list[dict]] | None:
-    """Re-hydrates an experiment + its personas from the backend, so a past
-    session can be resumed after a reload. Returns None if the experiment or
-    the backend itself isn't reachable."""
-    exp = _backend_call("GET", f"/experiments/{experiment_id}")
-    if not exp or not exp.get("id"):
-        return None
-
-    personas_resp = _backend_call("GET", f"/personas/experiment/{experiment_id}")
-    personas = [_map_backend_persona(p) for p in (personas_resp or {}).get("items", [])]
-
-    experiment = {
-        "id": exp["id"],
-        "product_name": exp.get("title", ""),
-        "description": exp.get("product_description", ""),
-        "target_audience": exp.get("target_audience", ""),
-        "objectives": exp.get("research_objectives", ""),
-        "status": exp.get("status", "draft"),
-        "_backend": True,
-    }
-    return experiment, personas
-
-
 def generate_report(experiment: dict, personas: list[dict], insights: dict) -> dict:
     return {
         "experiment": experiment,
