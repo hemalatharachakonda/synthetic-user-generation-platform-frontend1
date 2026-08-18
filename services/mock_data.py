@@ -214,7 +214,7 @@ def run_survey_question(personas: list[dict], question: str) -> dict:
     """Mocks POST /api/survey/run for a single question. Returns {persona_id: {score, comment}}"""
     results = {}
     for p in personas:
-        score = max(1, min(10, round(random.gauss(p["adoption_score"], 1.5))))
+        score = round(max(1.0, min(10.0, random.gauss(p["adoption_score"], 1.5))), 1)
         if score >= 7:
             comment = random.choice(SAMPLE_QUOTES_POSITIVE)
         elif score >= 4:

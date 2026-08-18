@@ -273,9 +273,11 @@ def _run_survey_via_groq(personas: list[dict], question: str, question_idx: int 
         "Respond with ONLY a JSON array — no "
         "markdown, no code fences, no commentary — in exactly this shape, one "
         "entry per persona id given, same order:\n"
-        '[{"persona_id": "...", "score": 1-10 (how positively they answer / '
-        'likelihood to adopt), "comment": "one short first-person sentence, '
-        'their actual voice, directly answering the question"}]'
+        '[{"persona_id": "...", "score": 1.0-10.0 with one decimal place '
+        '(how positively they answer / likelihood to adopt — use the full '
+        'range, not just whole numbers, e.g. 6.4 or 8.1), "comment": "one '
+        'short first-person sentence, their actual voice, directly '
+        'answering the question"}]'
     )
     user_prompt = (
         f"Product: \"{experiment.get('product_name', 'this product')}\" — "
@@ -308,9 +310,9 @@ def _run_survey_via_groq(personas: list[dict], question: str, question_idx: int 
                 continue
             score = entry.get("score")
             try:
-                score = max(1, min(10, int(score)))
+                score = round(max(1.0, min(10.0, float(score))), 1)
             except (TypeError, ValueError):
-                score = 5
+                score = 5.0
             results[pid] = {"score": score, "comment": entry.get("comment", "")}
         # make sure every persona got an answer; anything missing falls back below
         if all(p["id"] in results for p in personas):
