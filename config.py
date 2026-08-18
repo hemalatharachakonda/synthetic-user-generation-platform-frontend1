@@ -38,6 +38,16 @@ GROQ_TIMEOUT_SECONDS = 30
 GROQ_API_KEY = _get_setting("GROQ_API_KEY", "")
 GROQ_MODEL = _get_setting("GROQ_MODEL", "openai/gpt-oss-120b")
 
+# ── Backend API — FastAPI service that persists everything created here ────
+# (experiments, personas, survey responses, interview transcripts, insights,
+# reports). Override via BACKEND_URL in .env / Streamlit secrets if the
+# backend ever moves; nothing else in the app needs to change.
+BACKEND_URL = _get_setting(
+    "BACKEND_URL", "https://synthetic-ai-user-backend-deployment-2.onrender.com"
+).rstrip("/")
+BACKEND_API_PREFIX = "/api/v1"
+BACKEND_TIMEOUT_SECONDS = 60
+
 # ── App metadata ─────────────────────────────────────────────────────────────
 APP_NAME = "Synthetic User Generation Platform"
 APP_ICON = "SU"

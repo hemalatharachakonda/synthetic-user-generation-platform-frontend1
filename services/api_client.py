@@ -24,6 +24,7 @@ import requests
 import streamlit as st
 from config import GROQ_TIMEOUT_SECONDS, GROQ_API_KEY, GROQ_MODEL
 from services import mock_data, data_processor
+from services import backend_sync
 
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -31,14 +32,20 @@ GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 # ── Experiments ───────────────────────────────────────────────────────────────
 
 def create_experiment(product_name, description, target_audience, objectives, persona_count=6) -> dict:
-    return {
+    experiment = {
         "id": f"exp_{uuid.uuid4().hex[:8]}",
         "product_name": product_name,
         "description": description,
         "target_audience": target_audience,
         "objectives": objectives,
+        "persona_count": persona_count,
         "status": "draft",
     }
+    # Best-effort save to the backend database (bounded, never blocks or
+    # errors the page). The backend_id, if we got one, is what personas get
+    # linked to later — the app's own "id" above is unaffected either way.
+    experiment["_backend_id"] = backend_sync.sync_experiment(experiment)
+    return experiment
 
 
 # ── Personas ──────────────────────────────────────────────────────────────────
@@ -150,10 +157,19 @@ def generate_personas(experiment: dict, product_name, description, target_audien
     if GROQ_API_KEY:
         enriched = _enrich_personas_via_groq(roster, product_name, description, target_audience, objectives)
         if enriched:
+            _sync_personas_to_backend(experiment, enriched)
             return enriched
         # falls through to local fallback below on any Groq failure
 
-    return mock_data.fill_traits_locally(roster, target_audience)
+    personas = mock_data.fill_traits_locally(roster, target_audience)
+    _sync_personas_to_backend(experiment, personas)
+    return personas
+
+
+def _sync_personas_to_backend(experiment: dict, personas: list[dict]) -> None:
+    """Fire-and-forget save of exactly these personas to the backend
+    database — runs in the background and never affects what's on screen."""
+    backend_sync.sync_personas(experiment.get("_backend_id"), personas)
 
 
 # ── Survey ────────────────────────────────────────────────────────────────────
